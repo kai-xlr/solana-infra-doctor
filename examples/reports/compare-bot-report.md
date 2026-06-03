@@ -52,7 +52,7 @@ Avoid RPC #1 for latency-sensitive or slot-sensitive workloads.
 
 ## Limitations
 
-- HTTP JSON-RPC diagnostics only; WebSocket diagnostics are not included yet.
+- Compare uses HTTP JSON-RPC diagnostics; run `sol-doctor ws` for WebSocket readiness.
 - Checks run sequentially for deterministic v0.1 behavior.
 - Scores are deterministic heuristics, not a provider guarantee.
 

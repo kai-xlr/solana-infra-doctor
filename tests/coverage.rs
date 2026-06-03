@@ -1,19 +1,23 @@
 use solana_infra_doctor::{
     checks::{calculate_verdict, run_check, CheckCategory, CheckStatus, ErrorKind, RpcCheck},
-    cli::{CheckArgs, CompareArgs, CompareProfile},
+    cli::{CheckArgs, CompareArgs, CompareProfile, WsArgs},
     compare::{
         build_compare_report, render_human as render_compare_human,
         render_json as render_compare_json, render_markdown, run_compare, score_endpoint, slot_lag,
         write_markdown_report, CompareEndpoint, CompareProfileSummary,
     },
     latency::{average_latency_ms, Latency},
-    redact::redact_text,
+    redact::{redact_text, redact_url},
     report::{render_human, render_json},
     rpc::{
         BlockhashValidResponse, JsonRpcRequest, LatestBlockhashResponse, PerformanceSample,
         RpcEndpoint,
     },
     verdict::Verdict,
+    ws::{
+        classify, derive_ws_url, render_human as ws_render_human, render_json as ws_render_json,
+        run_ws, WsReport,
+    },
 };
 use std::{
     fs,
@@ -23,6 +27,7 @@ use std::{
     thread::{self, JoinHandle},
     time::Duration,
 };
+use url::Url;
 
 struct MockRpcServer {
     url: String,
@@ -1070,6 +1075,274 @@ async fn check_does_not_leak_secret_in_error_output() {
     let json = render_json(&report).unwrap();
     assert!(!human.contains("FAKE_SECRET_123"));
     assert!(!json.contains("FAKE_SECRET_123"));
+}
+
+#[derive(Clone, Copy)]
+enum WsBehavior {
+    Happy,
+    NeverNotify,
+    Malformed,
+    CloseAfterConfirm,
+}
+
+async fn start_mock_ws(behavior: WsBehavior) -> String {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::{accept_async, tungstenite::Message};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    tokio::spawn(async move {
+        let Ok((stream, _)) = listener.accept().await else {
+            return;
+        };
+        let Ok(mut ws) = accept_async(stream).await else {
+            return;
+        };
+        let _ = ws.next().await; // slotSubscribe request
+        let confirm = r#"{"jsonrpc":"2.0","result":7,"id":1}"#;
+        let notification = r#"{"jsonrpc":"2.0","method":"slotNotification","params":{"result":{"parent":1,"root":1,"slot":424000000},"subscription":7}}"#;
+
+        match behavior {
+            WsBehavior::Happy => {
+                let _ = ws.send(Message::text(confirm)).await;
+                let _ = ws.send(Message::text(notification)).await;
+                let _ = ws.next().await; // slotUnsubscribe request
+                let _ = ws
+                    .send(Message::text(r#"{"jsonrpc":"2.0","result":true,"id":2}"#))
+                    .await;
+                let _ = ws.close(None).await;
+            }
+            WsBehavior::NeverNotify => {
+                let _ = ws.send(Message::text(confirm)).await;
+                tokio::time::sleep(Duration::from_secs(5)).await; // hold past client timeout
+            }
+            WsBehavior::Malformed => {
+                let _ = ws.send(Message::text("not json")).await;
+                let _ = ws.close(None).await;
+            }
+            WsBehavior::CloseAfterConfirm => {
+                let _ = ws.send(Message::text(confirm)).await;
+                let _ = ws.close(None).await;
+            }
+        }
+    });
+
+    format!("ws://127.0.0.1:{port}")
+}
+
+fn ws_args(ws_url: Option<String>, timeout_ms: u64) -> WsArgs {
+    WsArgs {
+        rpc: "https://example.com".to_string(),
+        ws: ws_url,
+        json: false,
+        timeout_ms,
+    }
+}
+
+#[tokio::test]
+async fn ws_happy_path_reports_good() {
+    let url = start_mock_ws(WsBehavior::Happy).await;
+    let report = run_ws(ws_args(Some(url), 5_000)).await.unwrap();
+
+    assert_eq!(report.verdict, Verdict::Good);
+    assert!(report.connected);
+    assert!(report.subscribed);
+    assert_eq!(report.first_slot, Some(424_000_000));
+    assert!(report.time_to_first_notification_ms.is_some());
+    assert!(report.unsubscribed);
+    assert!(report.closed_cleanly);
+
+    let human = ws_render_human(&report);
+    assert!(human.contains("Solana Infra Doctor — WebSocket"));
+    assert!(human.contains("Verdict: GOOD"));
+    assert!(human.contains("slot 424000000"));
+
+    let json = ws_render_json(&report).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["verdict"], "GOOD");
+    assert_eq!(parsed["first_slot"], 424_000_000);
+    assert_eq!(parsed["subscription_method"], "slotSubscribe");
+}
+
+#[tokio::test]
+async fn ws_timeout_without_notification_is_bad() {
+    let url = start_mock_ws(WsBehavior::NeverNotify).await;
+    let report = run_ws(ws_args(Some(url), 300)).await.unwrap();
+
+    assert_eq!(report.verdict, Verdict::Bad);
+    assert!(report.connected);
+    assert!(report.subscribed); // confirmation was received
+    assert!(report.first_slot.is_none());
+    assert!(report.time_to_first_notification_ms.is_none());
+    assert!(ws_render_human(&report).contains("Verdict: BAD"));
+}
+
+#[tokio::test]
+async fn ws_malformed_frame_is_bad() {
+    let url = start_mock_ws(WsBehavior::Malformed).await;
+    let report = run_ws(ws_args(Some(url), 2_000)).await.unwrap();
+
+    assert_eq!(report.verdict, Verdict::Bad);
+    assert!(report.connected);
+    assert!(!report.subscribed);
+    assert!(report.first_slot.is_none());
+}
+
+#[tokio::test]
+async fn ws_server_close_after_confirm_is_bad() {
+    let url = start_mock_ws(WsBehavior::CloseAfterConfirm).await;
+    let report = run_ws(ws_args(Some(url), 2_000)).await.unwrap();
+
+    assert_eq!(report.verdict, Verdict::Bad);
+    assert!(report.connected);
+    assert!(report.first_slot.is_none());
+}
+
+#[tokio::test]
+async fn ws_connection_refused_is_bad() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener); // free the port so the connection is refused deterministically
+
+    let report = run_ws(ws_args(Some(format!("ws://127.0.0.1:{port}")), 1_500))
+        .await
+        .unwrap();
+
+    assert_eq!(report.verdict, Verdict::Bad);
+    assert!(!report.connected);
+    assert!(ws_render_human(&report).contains("connection failed"));
+}
+
+#[tokio::test]
+async fn ws_invalid_rpc_and_ws_urls_are_rejected() {
+    let invalid_rpc = run_ws(WsArgs {
+        rpc: "not a url".to_string(),
+        ws: None,
+        json: false,
+        timeout_ms: 1_000,
+    })
+    .await
+    .unwrap();
+    assert_eq!(invalid_rpc.verdict, Verdict::Bad);
+    assert!(invalid_rpc.summary.contains("invalid RPC URL"));
+
+    let invalid_ws = run_ws(WsArgs {
+        rpc: "https://example.com".to_string(),
+        ws: Some("ftp://example.com".to_string()),
+        json: false,
+        timeout_ms: 1_000,
+    })
+    .await
+    .unwrap();
+    assert_eq!(invalid_ws.verdict, Verdict::Bad);
+    assert!(invalid_ws.summary.contains("invalid WebSocket URL"));
+}
+
+#[test]
+fn ws_url_derivation_and_redaction() {
+    let from_https = derive_ws_url(
+        &Url::parse("https://api.mainnet-beta.solana.com").unwrap(),
+        None,
+    )
+    .unwrap();
+    assert_eq!(from_https.as_str(), "wss://api.mainnet-beta.solana.com/");
+
+    let from_http = derive_ws_url(&Url::parse("http://localhost:8899").unwrap(), None).unwrap();
+    assert_eq!(from_http.as_str(), "ws://localhost:8899/");
+
+    let override_ws = derive_ws_url(
+        &Url::parse("https://example.com").unwrap(),
+        Some("wss://realtime.example.com/feed"),
+    )
+    .unwrap();
+    assert_eq!(override_ws.as_str(), "wss://realtime.example.com/feed");
+
+    assert!(derive_ws_url(
+        &Url::parse("https://example.com").unwrap(),
+        Some("https://not-websocket.example.com")
+    )
+    .is_err());
+
+    // Secrets in the derived WebSocket URL are redacted.
+    let secret = derive_ws_url(
+        &Url::parse("https://node.example.com/?api-key=FAKE_SECRET_123").unwrap(),
+        None,
+    )
+    .unwrap();
+    assert!(!redact_url(&secret).contains("FAKE_SECRET_123"));
+}
+
+#[test]
+fn ws_classify_covers_warning_and_bad_branches() {
+    let base = WsReport {
+        verdict: Verdict::Unknown,
+        rpc_url: "https://example.com/".to_string(),
+        ws_url: "wss://example.com/".to_string(),
+        connected: true,
+        connect_latency_ms: Some(20),
+        subscription_method: "slotSubscribe",
+        subscribed: true,
+        time_to_first_notification_ms: Some(120),
+        first_slot: Some(100),
+        unsubscribed: true,
+        closed_cleanly: true,
+        summary: String::new(),
+        notes: Vec::new(),
+    };
+
+    assert_eq!(classify(&base).0, Verdict::Good);
+
+    let slow = WsReport {
+        time_to_first_notification_ms: Some(5_000),
+        ..base.clone()
+    };
+    let (verdict, _, notes) = classify(&slow);
+    assert_eq!(verdict, Verdict::Warning);
+    assert!(notes.iter().any(|note| note.contains("slow")));
+
+    let unclean = WsReport {
+        unsubscribed: false,
+        closed_cleanly: false,
+        ..base.clone()
+    };
+    assert_eq!(classify(&unclean).0, Verdict::Warning);
+
+    let disconnected = WsReport {
+        connected: false,
+        ..base
+    };
+    assert_eq!(classify(&disconnected).0, Verdict::Bad);
+}
+
+#[test]
+fn ws_render_human_shows_degraded_steps_and_notes() {
+    let degraded = WsReport {
+        verdict: Verdict::Warning,
+        rpc_url: "https://example.com/".to_string(),
+        ws_url: "wss://example.com/".to_string(),
+        connected: true,
+        connect_latency_ms: Some(40),
+        subscription_method: "slotSubscribe",
+        subscribed: true,
+        time_to_first_notification_ms: Some(5_000),
+        first_slot: Some(123),
+        unsubscribed: false,
+        closed_cleanly: false,
+        summary: "websocket is reachable but realtime behavior is degraded".to_string(),
+        notes: vec!["First slot notification was slow at 5000ms.".to_string()],
+    };
+    let report = WsReport {
+        notes: classify(&degraded).2,
+        ..degraded
+    };
+
+    let human = ws_render_human(&report);
+    assert!(human.contains("Verdict: WARNING"));
+    assert!(human.contains("Unsubscribe:  FAIL"));
+    assert!(human.contains("Close:        FAIL"));
+    assert!(human.contains("Notes:"));
+    assert!(human.contains("slow"));
 }
 
 fn with_genesis(

@@ -19,6 +19,28 @@ pub enum Commands {
 
     /// Compare multiple Solana RPC endpoints for a workload profile.
     Compare(CompareArgs),
+
+    /// Diagnose Solana WebSocket readiness for realtime workloads.
+    Ws(WsArgs),
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct WsArgs {
+    /// Solana RPC HTTP URL used to derive the WebSocket endpoint.
+    #[arg(long)]
+    pub rpc: String,
+
+    /// Explicit WebSocket URL override (ws:// or wss://).
+    #[arg(long)]
+    pub ws: Option<String>,
+
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    pub json: bool,
+
+    /// Connection and first-notification timeout in milliseconds.
+    #[arg(long, default_value_t = 10_000)]
+    pub timeout_ms: u64,
 }
 
 #[derive(Debug, Args, Clone)]

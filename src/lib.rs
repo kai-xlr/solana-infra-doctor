@@ -9,3 +9,4 @@ pub mod redact;
 pub mod report;
 pub mod rpc;
 pub mod verdict;
+pub mod ws;

@@ -20,6 +20,8 @@ which RPC to trust for wallets, bots, indexers, CI, and production applications.
 - Compares two or more endpoints and scores each `0`–`100`.
 - Tailors scoring to workload profiles: `general`, `wallet`, `bot`, `indexer`,
   `ci`.
+- Checks WebSocket readiness (`slotSubscribe` time-to-first-event) with
+  `sol-doctor ws`.
 - Emits human-readable terminal output, JSON, and Markdown reports.
 
 It is local-first, dependency-light, and built on raw HTTP JSON-RPC via
@@ -200,6 +202,18 @@ the best and worst endpoint.
 Compare mode is intended for endpoints on the same Solana network. If endpoints
 return different genesis hashes, Solana Infra Doctor rejects the comparison
 because slot lag and ranking are not meaningful across networks.
+
+Diagnose WebSocket readiness for realtime workloads:
+
+```bash
+sol-doctor ws --rpc https://api.mainnet-beta.solana.com
+```
+
+`ws` derives the WebSocket URL from the HTTP RPC URL (`https` → `wss`,
+`http` → `ws`), connects, subscribes with `slotSubscribe`, measures the
+time-to-first-slot-notification, unsubscribes, and closes. Override the derived
+URL with `--ws wss://...` when a provider uses a separate WebSocket host, and
+emit JSON with `--json`.
 
 ## Human Output Example
 
@@ -394,7 +408,8 @@ deterministic heuristics, not a guarantee of provider behavior.
 
 ## Current Limitations
 
-- HTTP JSON-RPC only; WebSocket diagnostics are not included yet.
+- `check` and `compare` use HTTP JSON-RPC; `sol-doctor ws` covers slot-subscription
+  WebSocket readiness only (no account/log/program subscriptions yet).
 - Compare checks currently run sequentially.
 - Scores are deterministic heuristics, not provider guarantees.
 - This is a local-first CLI, not a hosted monitoring service.

@@ -621,7 +621,7 @@ pub fn render_markdown(report: &CompareReport) -> String {
     output.push_str(&report.recommendation.replace('\n', "\n\n"));
     output.push_str("\n\n## Limitations\n\n");
     output.push_str(
-        "- HTTP JSON-RPC diagnostics only; WebSocket diagnostics are not included yet.\n",
+        "- Compare uses HTTP JSON-RPC diagnostics; run `sol-doctor ws` for WebSocket readiness.\n",
     );
     output.push_str("- Checks run sequentially for deterministic v0.1 behavior.\n");
     output.push_str("- Scores are deterministic heuristics, not a provider guarantee.\n\n");
