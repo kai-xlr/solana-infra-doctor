@@ -73,7 +73,7 @@ pub fn score_endpoint(profile: CompareProfile, endpoint: &CompareEndpoint) -> u8
     score.clamp(0, 100) as u8
 }
 
-pub(crate) fn has_failed_core_check(endpoint: &CompareEndpoint) -> bool {
+fn has_failed_core_check(endpoint: &CompareEndpoint) -> bool {
     endpoint.failed_checks.iter().any(|method| {
         matches!(
             method.as_str(),
