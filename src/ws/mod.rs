@@ -8,11 +8,12 @@ use serde_json::Value;
 use std::time::Duration;
 use tokio::time::{timeout, Instant};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use url::Url;
+
+pub mod analysis;
+pub use analysis::{classify, derive_ws_url};
 
 const SLOT_SUBSCRIBE_METHOD: &str = "slotSubscribe";
 const SLOT_SUBSCRIBE_REQUEST: &str = r#"{"jsonrpc":"2.0","id":1,"method":"slotSubscribe"}"#;
-const GOOD_NOTIFY_MS: u128 = 2_000;
 const UNSUBSCRIBE_ACK_MS: u64 = 1_000;
 
 #[derive(Debug, Clone, Serialize)]
@@ -58,83 +59,6 @@ impl WsReport {
         self.notes = notes;
         self
     }
-}
-
-pub fn classify(report: &WsReport) -> (Verdict, String, Vec<String>) {
-    if !report.connected {
-        return (
-            Verdict::Bad,
-            "websocket connection failed".to_string(),
-            Vec::new(),
-        );
-    }
-    if !report.subscribed {
-        return (
-            Verdict::Bad,
-            "slotSubscribe did not succeed".to_string(),
-            Vec::new(),
-        );
-    }
-    match report.time_to_first_notification_ms {
-        None => (
-            Verdict::Bad,
-            "no slot notification received before timeout".to_string(),
-            Vec::new(),
-        ),
-        Some(ms) if ms <= GOOD_NOTIFY_MS && report.unsubscribed && report.closed_cleanly => (
-            Verdict::Good,
-            "websocket realtime checks succeeded".to_string(),
-            Vec::new(),
-        ),
-        Some(ms) => {
-            let mut notes = Vec::new();
-            if ms > GOOD_NOTIFY_MS {
-                notes.push(format!("First slot notification was slow at {ms}ms."));
-            }
-            if !report.unsubscribed {
-                notes.push("Unsubscribe did not complete cleanly.".to_string());
-            }
-            if !report.closed_cleanly {
-                notes.push("Connection did not close cleanly.".to_string());
-            }
-            (
-                Verdict::Warning,
-                "websocket is reachable but realtime behavior is degraded".to_string(),
-                notes,
-            )
-        }
-    }
-}
-
-/// Derive a `ws`/`wss` URL from the HTTP RPC URL, or validate an explicit override.
-pub fn derive_ws_url(rpc: &Url, override_ws: Option<&str>) -> Result<Url, AppError> {
-    if let Some(raw) = override_ws {
-        let parsed = Url::parse(raw).map_err(|error| AppError::InvalidRpcUrl {
-            reason: error.to_string(),
-        })?;
-        return match parsed.scheme() {
-            "ws" | "wss" => Ok(parsed),
-            other => Err(AppError::InvalidRpcUrl {
-                reason: format!("unsupported WebSocket scheme '{other}', expected ws or wss"),
-            }),
-        };
-    }
-
-    let mut ws = rpc.clone();
-    let scheme = match rpc.scheme() {
-        "https" => "wss",
-        "http" => "ws",
-        other => {
-            return Err(AppError::InvalidRpcUrl {
-                reason: format!("cannot derive WebSocket URL from scheme '{other}'"),
-            })
-        }
-    };
-    ws.set_scheme(scheme)
-        .map_err(|()| AppError::InvalidRpcUrl {
-            reason: "cannot derive WebSocket URL".to_string(),
-        })?;
-    Ok(ws)
 }
 
 pub async fn run_ws(args: WsArgs) -> Result<WsReport, AppError> {
