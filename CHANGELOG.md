@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 - Unreleased
+
+- Deduplicate thiserror dependency versions by updating the direct dependency to thiserror 2.
+
 ## 0.2.0 - 2026-06-03
 
 - Add `sol-doctor ws` for WebSocket readiness diagnostics: derive the
