@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.4 - Unreleased
+## 0.1.4 - 2026-06-03
 
 - Align CLI help text with the current production-readiness positioning.
 - Add an example for mixed-network comparison rejection.
