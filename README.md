@@ -128,6 +128,17 @@ Latency thresholds for v0.1:
 
 WebSocket checks, Token Program checks, Token-2022 checks, dashboards, hosted services, and exporter modes are intentionally out of scope for v0.1.
 
+## License
+
+This project is licensed under either of:
+
+- Apache License, Version 2.0
+- MIT License
+
+at your option.
+
+Copyright 2026 Satya Kwok.
+
 ## Disclaimer
 
 Solana Infra Doctor is an independent open-source tool and is not affiliated with or endorsed by Solana Foundation.
