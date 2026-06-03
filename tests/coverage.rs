@@ -1083,6 +1083,8 @@ enum WsBehavior {
     NeverNotify,
     Malformed,
     CloseAfterConfirm,
+    NotifyMissingSlot,
+    BinaryThenHappy,
 }
 
 async fn start_mock_ws(behavior: WsBehavior) -> String {
@@ -1123,6 +1125,25 @@ async fn start_mock_ws(behavior: WsBehavior) -> String {
             }
             WsBehavior::CloseAfterConfirm => {
                 let _ = ws.send(Message::text(confirm)).await;
+                let _ = ws.close(None).await;
+            }
+            WsBehavior::NotifyMissingSlot => {
+                // A notification with no `slot` field and no prior confirmation.
+                let _ = ws
+                    .send(Message::text(
+                        r#"{"jsonrpc":"2.0","method":"slotNotification","params":{"result":{"parent":1}}}"#,
+                    ))
+                    .await;
+                let _ = ws.close(None).await;
+            }
+            WsBehavior::BinaryThenHappy => {
+                let _ = ws.send(Message::binary(vec![1u8, 2, 3])).await;
+                let _ = ws.send(Message::text(confirm)).await;
+                let _ = ws.send(Message::text(notification)).await;
+                let _ = ws.next().await; // slotUnsubscribe request
+                let _ = ws
+                    .send(Message::text(r#"{"jsonrpc":"2.0","result":true,"id":2}"#))
+                    .await;
                 let _ = ws.close(None).await;
             }
         }
@@ -1263,6 +1284,13 @@ fn ws_url_derivation_and_redaction() {
         Some("https://not-websocket.example.com")
     )
     .is_err());
+    // Unparseable override and a non-HTTP source scheme are both rejected.
+    assert!(derive_ws_url(
+        &Url::parse("https://example.com").unwrap(),
+        Some("not a url")
+    )
+    .is_err());
+    assert!(derive_ws_url(&Url::parse("ftp://example.com").unwrap(), None).is_err());
 
     // Secrets in the derived WebSocket URL are redacted.
     let secret = derive_ws_url(
@@ -1313,6 +1341,31 @@ fn ws_classify_covers_warning_and_bad_branches() {
         ..base
     };
     assert_eq!(classify(&disconnected).0, Verdict::Bad);
+}
+
+#[tokio::test]
+async fn ws_notification_without_slot_or_subscription_is_warning() {
+    let url = start_mock_ws(WsBehavior::NotifyMissingSlot).await;
+    let report = run_ws(ws_args(Some(url), 2_000)).await.unwrap();
+
+    assert_eq!(report.verdict, Verdict::Warning);
+    assert!(report.subscribed);
+    assert!(report.first_slot.is_none());
+    assert!(report.time_to_first_notification_ms.is_some());
+    assert!(!report.unsubscribed); // no subscription id was provided
+
+    // Rendering a notification that arrived without a slot value exercises the
+    // detail fallback path.
+    assert!(ws_render_human(&report).contains("First slot:"));
+}
+
+#[tokio::test]
+async fn ws_ignores_non_text_frames_before_notification() {
+    let url = start_mock_ws(WsBehavior::BinaryThenHappy).await;
+    let report = run_ws(ws_args(Some(url), 5_000)).await.unwrap();
+
+    assert_eq!(report.verdict, Verdict::Good);
+    assert_eq!(report.first_slot, Some(424_000_000));
 }
 
 #[test]
