@@ -4,7 +4,7 @@ use clap::Parser;
 use solana_infra_doctor::{
     checks,
     cli::{Cli, Commands},
-    compare, report,
+    compare, report, ws,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -52,6 +52,16 @@ async fn run() -> anyhow::Result<i32> {
             // A mixed-network comparison cannot produce a reliable ranking, so it
             // exits with the UNKNOWN code (3); same-network comparisons stay 0.
             Ok(if result.network_mismatch { 3 } else { 0 })
+        }
+        Commands::Ws(args) => {
+            let json = args.json;
+            let result = ws::run_ws(args).await?;
+            if json {
+                println!("{}", ws::render_json(&result)?);
+            } else {
+                print!("{}", ws::render_human(&result));
+            }
+            Ok(result.verdict.exit_code())
         }
     }
 }

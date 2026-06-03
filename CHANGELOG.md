@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 - Unreleased
+
+- Add `sol-doctor ws` for WebSocket readiness diagnostics: derive the
+  WebSocket URL from the HTTP RPC URL (or override with `--ws`), connect,
+  `slotSubscribe`, measure time-to-first-slot-notification, unsubscribe, and
+  close, with a GOOD/WARNING/BAD/UNKNOWN verdict and JSON output.
+- Redact credentials and API keys in the derived WebSocket URL.
+- Align the CLI help text with the current production-readiness positioning.
+
 ## 0.1.4 - 2026-06-03
 
 - Align CLI help text with the current production-readiness positioning.
