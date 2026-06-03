@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.3 - Unreleased
+## 0.1.3 - 2026-06-03
 
 - Harden RPC URL and API-key redaction across terminal, JSON, Markdown, and
   error output.
