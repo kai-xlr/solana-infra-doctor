@@ -27,6 +27,10 @@ pub struct CheckArgs {
     #[arg(long)]
     pub json: bool,
 
+    /// Keep WARNING exit code 1 and make CI warning behavior explicit in output.
+    #[arg(long)]
+    pub fail_on_warning: bool,
+
     /// Per-request timeout in milliseconds.
     #[arg(long, default_value_t = 5_000)]
     pub timeout_ms: u64,

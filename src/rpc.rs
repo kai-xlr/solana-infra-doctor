@@ -95,11 +95,15 @@ pub struct JsonRpcRequest {
 
 impl JsonRpcRequest {
     pub fn new(id: u64, method: &'static str) -> Self {
+        Self::with_params(id, method, Vec::new())
+    }
+
+    pub fn with_params(id: u64, method: &'static str, params: Vec<Value>) -> Self {
         Self {
             jsonrpc: "2.0",
             id,
             method,
-            params: Vec::new(),
+            params,
         }
     }
 }
@@ -124,6 +128,36 @@ pub struct VersionInfo {
     pub solana_core: String,
     #[serde(default)]
     pub feature_set: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct LatestBlockhashResponse {
+    pub value: LatestBlockhashValue,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct LatestBlockhashValue {
+    pub blockhash: String,
+    #[serde(rename = "lastValidBlockHeight")]
+    pub last_valid_block_height: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct BlockhashValidResponse {
+    pub value: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct PerformanceSample {
+    pub slot: u64,
+    #[serde(rename = "numSlots")]
+    pub num_slots: u64,
+    #[serde(rename = "numTransactions")]
+    pub num_transactions: u64,
+    #[serde(rename = "samplePeriodSecs")]
+    pub sample_period_secs: u64,
+    #[serde(rename = "numNonVoteTransactions", default)]
+    pub num_non_vote_transactions: Option<u64>,
 }
 
 #[cfg(test)]
@@ -155,6 +189,52 @@ mod tests {
         assert_eq!(request.id, 7);
         assert_eq!(request.method, "getHealth");
         assert!(request.params.is_empty());
+    }
+
+    #[test]
+    fn builds_json_rpc_request_with_params() {
+        let request = JsonRpcRequest::with_params(8, "isBlockhashValid", vec!["abc".into()]);
+        assert_eq!(request.method, "isBlockhashValid");
+        assert_eq!(request.params[0], "abc");
+    }
+
+    #[test]
+    fn parses_latest_blockhash_response() {
+        let json = r#"{
+            "value": {
+                "blockhash": "ExampleBlockhash111111111111111111111111111111",
+                "lastValidBlockHeight": 123456
+            }
+        }"#;
+        let parsed: LatestBlockhashResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            parsed.value.blockhash,
+            "ExampleBlockhash111111111111111111111111111111"
+        );
+        assert_eq!(parsed.value.last_valid_block_height, 123456);
+    }
+
+    #[test]
+    fn parses_blockhash_valid_response() {
+        let parsed: BlockhashValidResponse = serde_json::from_str(r#"{"value":true}"#).unwrap();
+        assert!(parsed.value);
+    }
+
+    #[test]
+    fn parses_performance_sample() {
+        let json = r#"{
+            "slot": 10,
+            "numSlots": 64,
+            "numTransactions": 1200,
+            "samplePeriodSecs": 60,
+            "numNonVoteTransactions": 300
+        }"#;
+        let parsed: PerformanceSample = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.slot, 10);
+        assert_eq!(parsed.num_slots, 64);
+        assert_eq!(parsed.num_transactions, 1200);
+        assert_eq!(parsed.sample_period_secs, 60);
+        assert_eq!(parsed.num_non_vote_transactions, Some(300));
     }
 
     #[test]

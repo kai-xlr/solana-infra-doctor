@@ -1,14 +1,48 @@
 # Solana Infra Doctor
 
-Solana Infra Doctor is a lightweight Rust CLI for diagnosing Solana RPC and infrastructure health.
+[![CI](https://github.com/satyakwok/solana-infra-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/satyakwok/solana-infra-doctor/actions/workflows/ci.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![Rust](https://img.shields.io/badge/rust-1.76%2B-orange.svg)](https://www.rust-lang.org/)
+[![Status](https://img.shields.io/badge/status-v0.1--foundation-lightgrey.svg)](#current-limitations)
 
-It checks whether an RPC endpoint is not only online, but usable for builders, bots, wallets, indexers, and production applications. The v0.1 scope is intentionally small: validate an HTTP RPC URL, run core JSON-RPC checks, measure latency, and return deterministic verdicts with useful exit codes.
+A lightweight Rust CLI for diagnosing Solana RPC and infrastructure health.
 
-Solana Infra Doctor is an independent open-source developer tool. It does not include token, NFT, airdrop, governance, points, marketplace, dashboard, cloud, or speculative crypto mechanics.
+Solana Infra Doctor checks whether a Solana RPC endpoint is online and usable for builders, bots, wallets, indexers, and production applications. It is intentionally small, dependency-light, and built on raw HTTP JSON-RPC via `reqwest`.
 
-## Why It Exists
+## Why This Exists
 
-A Solana RPC endpoint can respond to a basic network request while still being unsuitable for production use. Developers need a fast way to verify basic RPC usability from their own environment before wiring an endpoint into applications, bots, wallets, or infrastructure jobs.
+A Solana RPC endpoint can accept connections while still being unsuitable for production workloads. Basic uptime checks do not tell you whether core RPC calls work, recent blockhashes are usable, or the endpoint can return recent performance data.
+
+Solana Infra Doctor gives developers a fast local diagnostic that can be used before wiring an endpoint into application code, CI jobs, infrastructure automation, or operational runbooks.
+
+## What It Checks Today
+
+`sol-doctor check` currently runs these JSON-RPC checks:
+
+| Category | Method | Purpose |
+| --- | --- | --- |
+| Core | `getHealth` | Confirms the node reports healthy status. |
+| Core | `getVersion` | Confirms the endpoint can return validator software version metadata. |
+| Core | `getGenesisHash` | Confirms the endpoint can identify its cluster genesis hash. |
+| Core | `getSlot` | Confirms the endpoint can return current slot data. |
+| Blockhash | `getLatestBlockhash` | Confirms the endpoint can produce a recent blockhash. |
+| Blockhash | `isBlockhashValid` | Confirms the latest returned blockhash is valid. |
+| Performance | `getRecentPerformanceSamples` | Confirms recent performance sample data is available. |
+
+The CLI measures latency for each method and calculates an average latency verdict using these v0.1 thresholds:
+
+- `GOOD`: average latency is less than or equal to 500ms.
+- `WARNING`: average latency is greater than 500ms and less than or equal to 1500ms.
+- `BAD`: average latency is greater than 1500ms or repeated timeouts occur.
+
+Error kinds are classified as:
+
+- `invalid_url`
+- `timeout`
+- `http_error`
+- `rpc_error`
+- `malformed_response`
+- `unknown_error`
 
 ## Install From Source
 
@@ -44,21 +78,38 @@ Use a custom per-request timeout:
 sol-doctor check --rpc https://api.mainnet-beta.solana.com --timeout-ms 3000
 ```
 
-## Human-Readable Output Example
+Make warning behavior explicit for CI:
+
+```bash
+sol-doctor check --rpc https://api.mainnet-beta.solana.com --fail-on-warning
+```
+
+`--fail-on-warning` does not change the exit code mapping. `WARNING` still exits with code `1`; the output makes the CI policy explicit.
+
+## Human Output Example
 
 ```text
 Solana Infra Doctor
 ===================
 RPC URL: https://api.mainnet-beta.solana.com/
 Verdict: GOOD
-Summary: all required RPC checks succeeded
-Average latency: 120ms
+Summary: all RPC readiness checks succeeded
+Average latency: 42ms
 
 Checks:
-- getHealth      OK      80ms  health is ok
-- getVersion     OK     110ms  solana-core 2.x.x
-- getGenesisHash OK     130ms  5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp
-- getSlot        OK     170ms  slot 123456789
+
+Core:
+- getHealth                    OK       35ms  health is ok
+- getVersion                   OK       39ms  solana-core 4.0.0
+- getGenesisHash               OK       41ms  5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d
+- getSlot                      OK       38ms  slot 424013263
+
+Blockhash:
+- getLatestBlockhash           OK       44ms  7xKXtgQv...example
+- isBlockhashValid             OK       40ms  latest blockhash is valid
+
+Performance:
+- getRecentPerformanceSamples  OK       47ms  124000 transactions across 64 slots in 60s
 ```
 
 ## JSON Output Example
@@ -67,66 +118,67 @@ Checks:
 {
   "verdict": "GOOD",
   "rpc_url": "https://api.mainnet-beta.solana.com/",
-  "summary": "all required RPC checks succeeded",
-  "average_latency_ms": 120,
+  "summary": "all RPC readiness checks succeeded",
+  "average_latency_ms": 42,
+  "fail_on_warning": false,
   "checks": [
     {
+      "category": "core",
       "method": "getHealth",
       "status": "success",
-      "latency_ms": 80,
-      "detail": "health is ok"
+      "latency_ms": 35,
+      "detail": "health is ok",
+      "error_kind": null,
+      "critical": true
     },
     {
-      "method": "getVersion",
+      "category": "blockhash",
+      "method": "isBlockhashValid",
       "status": "success",
-      "latency_ms": 110,
-      "detail": "solana-core 2.x.x"
+      "latency_ms": 40,
+      "detail": "latest blockhash is valid",
+      "error_kind": null,
+      "critical": true
     },
     {
-      "method": "getGenesisHash",
+      "category": "performance",
+      "method": "getRecentPerformanceSamples",
       "status": "success",
-      "latency_ms": 130,
-      "detail": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
-    },
-    {
-      "method": "getSlot",
-      "status": "success",
-      "latency_ms": 170,
-      "detail": "slot 123456789"
+      "latency_ms": 47,
+      "detail": "124000 transactions across 64 slots in 60s",
+      "error_kind": null,
+      "critical": false
     }
   ]
 }
 ```
 
-## Verdicts
-
-- `GOOD`: all required RPC checks succeed and average latency is acceptable.
-- `WARNING`: the RPC is reachable, but one non-critical check fails or average latency is elevated.
-- `BAD`: the RPC URL is invalid, the endpoint cannot be reached, required RPC calls fail, repeated timeouts occur, or average latency is too high.
-- `UNKNOWN`: there is not enough data to produce a reliable verdict.
-
-Latency thresholds for v0.1:
-
-- `GOOD`: average latency is less than or equal to 500ms.
-- `WARNING`: average latency is greater than 500ms and less than or equal to 1500ms.
-- `BAD`: average latency is greater than 1500ms or repeated timeouts occur.
-
 ## Exit Codes
 
-- `0`: `GOOD`
-- `1`: `WARNING`
-- `2`: `BAD`
-- `3`: internal or unexpected error
+| Code | Verdict | Meaning |
+| --- | --- | --- |
+| `0` | `GOOD` | Required checks passed and latency is acceptable. |
+| `1` | `WARNING` | Endpoint is reachable, but latency is elevated or one non-critical check failed. |
+| `2` | `BAD` | URL is invalid, endpoint is unreachable, critical checks failed, repeated timeouts occurred, or latency is too high. |
+| `3` | `UNKNOWN` or internal error | Not enough data for a reliable verdict, or an unexpected internal error occurred. |
+
+## Current Limitations
+
+- HTTP JSON-RPC only; WebSocket diagnostics are not implemented yet.
+- Checks run sequentially in v0.1.
+- Verdicts are deterministic but intentionally conservative.
+- No Solana SDK dependencies are used yet.
+- No Token Program, Token-2022, transaction simulation, account indexing, or endpoint comparison checks yet.
+- No Prometheus exporter, dashboard, hosted cloud service, marketplace, token, NFT, points, airdrop, or governance features.
 
 ## Roadmap
 
-- Broader RPC method coverage for production readiness checks.
-- Optional cluster expectation checks.
-- Better diagnostics for rate limiting and degraded providers.
-- Endpoint comparison mode.
-- Historical output formats suitable for CI and local automation.
-
-WebSocket checks, Token Program checks, Token-2022 checks, dashboards, hosted services, and exporter modes are intentionally out of scope for v0.1.
+- Add optional cluster expectation checks.
+- Add endpoint comparison mode.
+- Add richer rate-limit and provider-degradation diagnostics.
+- Add transaction simulation readiness checks without pulling heavy SDK dependencies too early.
+- Add machine-readable output refinements for CI and infrastructure automation.
+- Consider parallel check execution once the v0.1 behavior is stable.
 
 ## License
 
