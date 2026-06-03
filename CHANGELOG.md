@@ -1,7 +1,13 @@
 # Changelog
 
-## 0.2.3 - Unreleased
+## 0.3.0 - Unreleased
 
+- Reorganize the diagnostic engine into clean internal modules (`checks`,
+  `compare` with `scoring`/`render`, `rpc` with `models`, `ws` with `analysis`,
+  `checks::verdict`) and strengthen `src/lib.rs` so the engine can be reused or
+  extracted into a separate core crate later.
+- Preserve the `solana-infra-doctor` crate name, the `sol-doctor` binary, the
+  CLI behavior, JSON shape, Markdown report, and redaction behavior.
 - Add a README "Demo" section with real terminal screenshots for `check`,
   `compare`, and `ws`.
 - Add a real `bot`-profile comparison report example.
