@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 - Unreleased
+## 0.2.0 - 2026-06-03
 
 - Add `sol-doctor ws` for WebSocket readiness diagnostics: derive the
   WebSocket URL from the HTTP RPC URL (or override with `--ws`), connect,
