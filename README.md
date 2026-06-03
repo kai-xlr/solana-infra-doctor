@@ -28,6 +28,24 @@ pipelines, and infrastructure reviews.
 It is local-first, dependency-light, and built on raw HTTP JSON-RPC via
 `reqwest`.
 
+## Demo
+
+Diagnose a single endpoint (`sol-doctor check`):
+
+![sol-doctor check output](https://raw.githubusercontent.com/satyakwok/solana-infra-doctor/main/docs/assets/check.png)
+
+Compare two endpoints for a workload (`sol-doctor compare --profile bot`) — note
+how the faster endpoint is not automatically the winner when it serves staler
+slots:
+
+![sol-doctor compare output](https://raw.githubusercontent.com/satyakwok/solana-infra-doctor/main/docs/assets/compare.png)
+
+Check WebSocket realtime readiness (`sol-doctor ws`):
+
+![sol-doctor ws output](https://raw.githubusercontent.com/satyakwok/solana-infra-doctor/main/docs/assets/ws.png)
+
+Screenshots are real runs against public endpoints; values vary per run.
+
 ## Install
 
 ```bash
@@ -459,6 +477,8 @@ diagnostic runs, not provider benchmarks.
   — Markdown comparison report for the `indexer` profile.
 - [`examples/mixed-network-rejection.md`](examples/mixed-network-rejection.md)
   — how compare rejects endpoints from different Solana networks.
+- [`examples/reports/compare-bot-live.md`](examples/reports/compare-bot-live.md)
+  — a real `bot`-profile comparison of two public mainnet endpoints.
 
 These reports are useful as a readiness signal for RPC comparison, bot/indexer
 readiness review, CI discussion, and consulting-style diagnostics. Scores are
