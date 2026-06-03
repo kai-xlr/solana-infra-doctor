@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.2 - Unreleased
+## 0.1.2 - 2026-06-03
 
 - Compare mode now rejects mixed-network endpoints with mismatched genesis
   hashes; slot lag and best/worst ranking are disabled across different
