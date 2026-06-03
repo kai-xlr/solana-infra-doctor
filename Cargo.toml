@@ -1,6 +1,6 @@
 [package]
 name = "solana-infra-doctor"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 rust-version = "1.76"
 description = "A Rust CLI for Solana RPC production-readiness diagnostics, comparison, and WebSocket checks."
@@ -9,6 +9,9 @@ repository = "https://github.com/satyakwok/solana-infra-doctor"
 readme = "README.md"
 keywords = ["solana", "rpc", "cli", "diagnostics", "rust"]
 categories = ["command-line-utilities", "development-tools"]
+# Demo screenshots are large and only used in the rendered README; keep them out
+# of the published crate.
+exclude = ["docs/assets/"]
 
 [[bin]]
 name = "sol-doctor"

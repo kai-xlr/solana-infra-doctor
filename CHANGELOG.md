@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.3 - Unreleased
+
+- Add a README "Demo" section with real terminal screenshots for `check`,
+  `compare`, and `ws`.
+- Add a real `bot`-profile comparison report example.
+- Add a "How to vet a Solana RPC endpoint" guide under `docs/`.
+- Exclude demo screenshots from the published crate to keep it small.
+
 ## 0.2.2 - 2026-06-03
 
 - Strengthen README positioning for Solana RPC readiness diagnostics.
