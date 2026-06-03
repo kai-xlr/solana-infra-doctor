@@ -98,6 +98,57 @@ sol-doctor check --rpc https://api.mainnet-beta.solana.com --fail-on-warning
 `--fail-on-warning` does not change the exit code mapping. `WARNING` still
 exits with code `1`; the output makes the CI policy explicit.
 
+Compare two or more RPC endpoints:
+
+```bash
+sol-doctor compare \
+  --rpc https://api.mainnet-beta.solana.com \
+  --rpc https://example-rpc-provider.com
+```
+
+Compare endpoints for a specific workload profile:
+
+```bash
+sol-doctor compare \
+  --rpc https://api.mainnet-beta.solana.com \
+  --rpc https://example-rpc-provider.com \
+  --profile bot
+```
+
+Emit compare results as JSON:
+
+```bash
+sol-doctor compare \
+  --rpc https://api.mainnet-beta.solana.com \
+  --rpc https://example-rpc-provider.com \
+  --json
+```
+
+Write a Markdown comparison report:
+
+```bash
+sol-doctor compare \
+  --rpc https://api.mainnet-beta.solana.com \
+  --rpc https://example-rpc-provider.com \
+  --profile indexer \
+  --report rpc-report.md
+```
+
+Compare mode supports these profiles:
+
+| Profile | Use case |
+| --- | --- |
+| `general` | Balanced default scoring for general production readiness. |
+| `wallet` | Emphasizes core RPC success and latest blockhash validity. |
+| `bot` | Penalizes elevated latency and high slot lag for latency-sensitive workloads. |
+| `indexer` | Penalizes slot lag and unavailable recent performance samples. |
+| `ci` | Uses strict recommendation text for pass-gate decisions. |
+
+Compare mode helps choose RPC endpoints for wallet, bot, indexer, and CI
+workloads by scoring each endpoint from `0` to `100`, calculating slot lag
+against the freshest observed endpoint, listing failed checks, and recommending
+the best and worst endpoint.
+
 ## Human Output Example
 
 ```text
@@ -122,6 +173,41 @@ Blockhash:
 
 Performance:
 - getRecentPerformanceSamples  OK       47ms  124000 transactions across 64 slots in 60s
+```
+
+## Compare Output Example
+
+```text
+Solana Infra Doctor — RPC Compare
+
+Profile: bot
+
+RPC #1
+URL: https://api.mainnet-beta.solana.com/
+Verdict: GOOD
+Score: 90/100
+Slot: 347000000
+Slot lag: baseline
+Average latency: 142ms
+Failed checks: none
+
+RPC #2
+URL: https://***.provider.com/
+Verdict: WARNING
+Score: 15/100
+Slot: 346999700
+Slot lag: 300 slots behind
+Average latency: 812ms
+Failed checks: getRecentPerformanceSamples
+Notes:
+- Average latency is high for latency-sensitive bot workloads.
+- Slot lag is high for slot-sensitive bot workloads.
+
+Recommendation:
+Best RPC: RPC #1
+Worst RPC: RPC #2
+RPC #1 is recommended for bot workloads.
+Avoid RPC #2 for latency-sensitive or slot-sensitive workloads.
 ```
 
 ## JSON Output Example
@@ -165,6 +251,65 @@ Performance:
 }
 ```
 
+## Compare JSON Output Example
+
+```json
+{
+  "profile": "bot",
+  "endpoints": [
+    {
+      "index": 1,
+      "url": "https://api.mainnet-beta.solana.com/",
+      "verdict": "GOOD",
+      "score": 90,
+      "slot": 347000000,
+      "slot_lag": 0,
+      "average_latency_ms": 142,
+      "failed_checks": [],
+      "blockhash_valid": true,
+      "notes": []
+    },
+    {
+      "index": 2,
+      "url": "https://***.provider.com/",
+      "verdict": "WARNING",
+      "score": 15,
+      "slot": 346999700,
+      "slot_lag": 300,
+      "average_latency_ms": 812,
+      "failed_checks": ["getRecentPerformanceSamples"],
+      "blockhash_valid": true,
+      "notes": [
+        "Average latency is high for latency-sensitive bot workloads.",
+        "Slot lag is high for slot-sensitive bot workloads."
+      ]
+    }
+  ],
+  "best_endpoint_index": 1,
+  "worst_endpoint_index": 2,
+  "recommendation": "Best RPC: RPC #1\nWorst RPC: RPC #2\nRPC #1 is recommended for bot workloads.\nAvoid RPC #2 for latency-sensitive or slot-sensitive workloads."
+}
+```
+
+## Markdown Report Example
+
+```markdown
+# Solana Infra Doctor RPC Compare Report
+
+Profile: `indexer`
+
+## Summary
+
+- Best RPC: RPC #1
+- Worst RPC: RPC #2
+
+## Comparison
+
+| RPC | URL | Verdict | Score | Slot | Slot lag | Average latency | Failed checks | Blockhash valid |
+| --- | --- | --- | ---: | --- | --- | --- | --- | --- |
+| RPC #1 | `https://api.mainnet-beta.solana.com/` | `GOOD` | 90/100 | 347000000 | baseline | 142ms | none | yes |
+```
+
 ## Exit Codes
 
 | Code | Verdict | Meaning |
@@ -185,10 +330,16 @@ Performance:
 - No Prometheus exporter, dashboard, hosted cloud service, marketplace, token,
   NFT, points, airdrop, or governance features.
 
+## Coverage Policy
+
+CI enforces at least `95%` line coverage with `cargo llvm-cov`. Coverage reports
+are generated as `lcov.info`, uploaded to Codecov, and ignored locally so the
+report artifact is not committed.
+
 ## Roadmap
 
 - Add optional cluster expectation checks.
-- Add endpoint comparison mode.
+- Refine endpoint comparison scoring as more real-world diagnostics are added.
 - Add richer rate-limit and provider-degradation diagnostics.
 - Add transaction simulation readiness checks without pulling heavy SDK
   dependencies too early.

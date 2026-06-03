@@ -4,7 +4,7 @@ use clap::Parser;
 use solana_infra_doctor::{
     checks,
     cli::{Cli, Commands},
-    report,
+    compare, report,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -36,6 +36,20 @@ async fn run() -> anyhow::Result<i32> {
                 report::print_report(&result)?;
             }
             Ok(result.verdict.exit_code())
+        }
+        Commands::Compare(args) => {
+            let json = args.json;
+            let markdown_report = args.report.clone();
+            let result = compare::run_compare(args).await?;
+            if let Some(path) = markdown_report {
+                compare::write_markdown_report(&result, &path)?;
+            }
+            if json {
+                println!("{}", compare::render_json(&result)?);
+            } else {
+                print!("{}", compare::render_human(&result));
+            }
+            Ok(0)
         }
     }
 }

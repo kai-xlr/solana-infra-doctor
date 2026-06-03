@@ -2,6 +2,7 @@
 
 pub mod checks;
 pub mod cli;
+pub mod compare;
 pub mod error;
 pub mod latency;
 pub mod report;

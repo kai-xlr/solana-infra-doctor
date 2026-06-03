@@ -23,4 +23,14 @@ pub enum AppError {
 
     #[error("failed to serialize report: {0}")]
     SerializeReport(#[source] serde_json::Error),
+
+    #[error("compare requires at least 2 RPC URLs")]
+    CompareRequiresTwoRpcUrls,
+
+    #[error("failed to write Markdown report to {path}: {source}")]
+    WriteMarkdownReport {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
 }

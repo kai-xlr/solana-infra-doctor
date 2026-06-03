@@ -1,6 +1,11 @@
 use solana_infra_doctor::{
     checks::{calculate_verdict, run_check, CheckCategory, CheckStatus, ErrorKind, RpcCheck},
-    cli::CheckArgs,
+    cli::{CheckArgs, CompareArgs, CompareProfile},
+    compare::{
+        build_compare_report, render_human as render_compare_human,
+        render_json as render_compare_json, render_markdown, run_compare, score_endpoint, slot_lag,
+        write_markdown_report, CompareEndpoint, CompareProfileSummary,
+    },
     latency::{average_latency_ms, Latency},
     report::{render_human, render_json},
     rpc::{
@@ -10,8 +15,10 @@ use solana_infra_doctor::{
     verdict::Verdict,
 };
 use std::{
+    fs,
     io::{Read, Write},
     net::{TcpListener, TcpStream},
+    path::PathBuf,
     thread::{self, JoinHandle},
     time::Duration,
 };
@@ -140,6 +147,20 @@ fn blockhash_valid_ok() -> &'static str {
 
 fn performance_ok() -> &'static str {
     r#"{"jsonrpc":"2.0","id":7,"result":[{"slot":10,"numSlots":64,"numTransactions":124000,"samplePeriodSecs":60,"numNonVoteTransactions":90000}]}"#
+}
+
+fn healthy_rpc_responses(slot: u64) -> Vec<MockResponse> {
+    vec![
+        MockResponse::ok(health_ok()),
+        MockResponse::ok(version_ok()),
+        MockResponse::ok(genesis_ok()),
+        MockResponse::ok(Box::leak(
+            format!(r#"{{"jsonrpc":"2.0","id":4,"result":{slot}}}"#).into_boxed_str(),
+        )),
+        MockResponse::ok(latest_blockhash_ok()),
+        MockResponse::ok(blockhash_valid_ok()),
+        MockResponse::ok(performance_ok()),
+    ]
 }
 
 #[tokio::test]
@@ -466,4 +487,499 @@ fn rpc_value_objects_are_covered() {
     )
     .unwrap();
     assert_eq!(sample.num_non_vote_transactions, Some(300));
+}
+
+fn compare_check_report(
+    url: &str,
+    verdict: Verdict,
+    slot: Option<u64>,
+    average_latency_ms: Option<u128>,
+    blockhash_valid: bool,
+    failed_methods: &[&'static str],
+) -> solana_infra_doctor::checks::CheckReport {
+    let mut checks = Vec::new();
+    checks.push(RpcCheck {
+        category: CheckCategory::Core,
+        method: "getHealth",
+        status: status_for("getHealth", failed_methods),
+        latency_ms: Some(average_latency_ms.unwrap_or(0)),
+        detail: "health is ok".to_string(),
+        error_kind: error_for("getHealth", failed_methods),
+        critical: true,
+    });
+    checks.push(RpcCheck {
+        category: CheckCategory::Core,
+        method: "getVersion",
+        status: status_for("getVersion", failed_methods),
+        latency_ms: Some(average_latency_ms.unwrap_or(0)),
+        detail: "solana-core 4.0.0".to_string(),
+        error_kind: error_for("getVersion", failed_methods),
+        critical: true,
+    });
+    checks.push(RpcCheck {
+        category: CheckCategory::Core,
+        method: "getGenesisHash",
+        status: status_for("getGenesisHash", failed_methods),
+        latency_ms: Some(average_latency_ms.unwrap_or(0)),
+        detail: "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d".to_string(),
+        error_kind: error_for("getGenesisHash", failed_methods),
+        critical: true,
+    });
+    checks.push(RpcCheck {
+        category: CheckCategory::Core,
+        method: "getSlot",
+        status: status_for("getSlot", failed_methods),
+        latency_ms: Some(average_latency_ms.unwrap_or(0)),
+        detail: slot.map_or_else(
+            || "missing result".to_string(),
+            |slot| format!("slot {slot}"),
+        ),
+        error_kind: error_for("getSlot", failed_methods),
+        critical: true,
+    });
+    checks.push(RpcCheck {
+        category: CheckCategory::Blockhash,
+        method: "getLatestBlockhash",
+        status: status_for("getLatestBlockhash", failed_methods),
+        latency_ms: Some(average_latency_ms.unwrap_or(0)),
+        detail: "7xKXtgQvExample111111111111111111111111111".to_string(),
+        error_kind: error_for("getLatestBlockhash", failed_methods),
+        critical: true,
+    });
+    checks.push(RpcCheck {
+        category: CheckCategory::Blockhash,
+        method: "isBlockhashValid",
+        status: if blockhash_valid {
+            CheckStatus::Success
+        } else {
+            CheckStatus::Failed
+        },
+        latency_ms: Some(average_latency_ms.unwrap_or(0)),
+        detail: if blockhash_valid {
+            "latest blockhash is valid".to_string()
+        } else {
+            "latest blockhash unavailable".to_string()
+        },
+        error_kind: (!blockhash_valid).then_some(ErrorKind::MalformedResponse),
+        critical: true,
+    });
+    checks.push(RpcCheck {
+        category: CheckCategory::Performance,
+        method: "getRecentPerformanceSamples",
+        status: status_for("getRecentPerformanceSamples", failed_methods),
+        latency_ms: Some(average_latency_ms.unwrap_or(0)),
+        detail: "124000 transactions across 64 slots in 60s".to_string(),
+        error_kind: error_for("getRecentPerformanceSamples", failed_methods),
+        critical: false,
+    });
+
+    solana_infra_doctor::checks::CheckReport {
+        verdict,
+        rpc_url: url.to_string(),
+        summary: verdict.to_string(),
+        average_latency_ms,
+        fail_on_warning: false,
+        checks,
+    }
+}
+
+fn status_for(method: &str, failed_methods: &[&str]) -> CheckStatus {
+    if failed_methods.contains(&method) {
+        CheckStatus::Failed
+    } else {
+        CheckStatus::Success
+    }
+}
+
+fn error_for(method: &str, failed_methods: &[&str]) -> Option<ErrorKind> {
+    failed_methods
+        .contains(&method)
+        .then_some(ErrorKind::MalformedResponse)
+}
+
+#[tokio::test]
+async fn compare_rejects_fewer_than_two_rpc_urls() {
+    let error = run_compare(CompareArgs {
+        rpc: vec!["https://api.mainnet-beta.solana.com".to_string()],
+        profile: CompareProfile::General,
+        json: false,
+        report: None,
+        timeout_ms: 1_000,
+    })
+    .await
+    .unwrap_err();
+
+    assert_eq!(error.to_string(), "compare requires at least 2 RPC URLs");
+}
+
+#[tokio::test]
+async fn compare_success_reuses_check_flow_and_redacts_urls() {
+    let server_a = MockRpcServer::start(healthy_rpc_responses(200));
+    let server_b = MockRpcServer::start(healthy_rpc_responses(190));
+    let report = run_compare(CompareArgs {
+        rpc: vec![
+            server_a.url.replace("http://", "http://user:pass@"),
+            server_b.url.clone(),
+        ],
+        profile: CompareProfile::General,
+        json: false,
+        report: None,
+        timeout_ms: 1_000,
+    })
+    .await
+    .unwrap();
+    server_a.join();
+    server_b.join();
+
+    assert_eq!(report.profile.label(), "general");
+    assert_eq!(report.endpoints.len(), 2);
+    assert_eq!(report.endpoints[0].slot, Some(200));
+    assert_eq!(report.endpoints[1].slot_lag, Some(10));
+    assert!(report.endpoints[0].url.contains("***:***@"));
+    assert!(!report.endpoints[0].url.contains("user:pass"));
+}
+
+#[test]
+fn compare_slot_lag_scoring_and_selection_work() {
+    assert_eq!(slot_lag(Some(100), Some(125)), Some(25));
+    assert_eq!(slot_lag(None, Some(125)), None);
+
+    let reports = vec![
+        compare_check_report(
+            "https://api.mainnet-beta.solana.com/",
+            Verdict::Good,
+            Some(347_000_000),
+            Some(142),
+            true,
+            &[],
+        ),
+        compare_check_report(
+            "https://slow.provider.com/",
+            Verdict::Warning,
+            Some(346_999_700),
+            Some(812),
+            true,
+            &["getRecentPerformanceSamples"],
+        ),
+        compare_check_report(
+            "https://bad.provider.com/",
+            Verdict::Bad,
+            Some(346_990_000),
+            Some(2_000),
+            false,
+            &[
+                "getHealth",
+                "getVersion",
+                "getGenesisHash",
+                "getSlot",
+                "getLatestBlockhash",
+            ],
+        ),
+    ];
+
+    let report = build_compare_report(CompareProfile::General, &reports);
+
+    assert_eq!(report.best_endpoint_index, 1);
+    assert_eq!(report.worst_endpoint_index, 3);
+    assert_eq!(report.endpoints[0].slot_lag, Some(0));
+    assert_eq!(report.endpoints[1].slot_lag, Some(300));
+    assert_eq!(report.endpoints[2].score, 0);
+}
+
+#[test]
+fn compare_profiles_apply_expected_adjustments_and_notes() {
+    let base = CompareEndpoint {
+        index: 1,
+        url: "https://example.com/".to_string(),
+        verdict: Verdict::Good,
+        score: 0,
+        slot: Some(100),
+        slot_lag: Some(100),
+        average_latency_ms: Some(900),
+        failed_checks: vec!["getRecentPerformanceSamples".to_string()],
+        blockhash_valid: false,
+        notes: Vec::new(),
+    };
+
+    let general = score_endpoint(CompareProfile::General, &base);
+    let bot = score_endpoint(CompareProfile::Bot, &base);
+    let indexer = score_endpoint(CompareProfile::Indexer, &base);
+    assert!(bot < general);
+    assert!(indexer < general);
+
+    let wallet_report = build_compare_report(
+        CompareProfile::Wallet,
+        &[compare_check_report(
+            "https://wallet.example.com/",
+            Verdict::Warning,
+            Some(100),
+            Some(200),
+            false,
+            &[],
+        )],
+    );
+    assert!(wallet_report.endpoints[0]
+        .notes
+        .iter()
+        .any(|note| note.contains("blockhash")));
+
+    let ci_report = build_compare_report(
+        CompareProfile::Ci,
+        &[
+            compare_check_report(
+                "https://good.example.com/",
+                Verdict::Good,
+                Some(100),
+                Some(200),
+                true,
+                &[],
+            ),
+            compare_check_report(
+                "https://warn.example.com/",
+                Verdict::Warning,
+                Some(99),
+                Some(200),
+                true,
+                &[],
+            ),
+        ],
+    );
+    assert!(ci_report
+        .recommendation
+        .contains("WARNING or BAD endpoints are not recommended for pass gates"));
+
+    let indexer_report = build_compare_report(
+        CompareProfile::Indexer,
+        &[
+            compare_check_report(
+                "https://fresh-indexer.example.com/",
+                Verdict::Good,
+                Some(200),
+                Some(400),
+                true,
+                &[],
+            ),
+            compare_check_report(
+                "https://stale-indexer.example.com/",
+                Verdict::Warning,
+                Some(100),
+                Some(400),
+                true,
+                &["getRecentPerformanceSamples"],
+            ),
+        ],
+    );
+    assert!(indexer_report
+        .recommendation
+        .contains("freshness-sensitive indexer workloads"));
+    assert!(indexer_report.endpoints[1]
+        .notes
+        .iter()
+        .any(|note| note.contains("performance samples")));
+    assert!(indexer_report.endpoints[1]
+        .notes
+        .iter()
+        .any(|note| note.contains("Slot lag")));
+}
+
+#[test]
+fn compare_json_markdown_and_human_outputs_have_required_shape() {
+    let reports = vec![
+        compare_check_report(
+            "https://api.mainnet-beta.solana.com/",
+            Verdict::Good,
+            Some(347_000_000),
+            Some(142),
+            true,
+            &[],
+        ),
+        compare_check_report(
+            "https://***:***@provider.com/rpc",
+            Verdict::Warning,
+            Some(346_999_700),
+            Some(812),
+            true,
+            &["getRecentPerformanceSamples"],
+        ),
+    ];
+    let report = build_compare_report(CompareProfile::Bot, &reports);
+
+    let human = render_compare_human(&report);
+    assert!(human.contains("Solana Infra Doctor — RPC Compare"));
+    assert!(human.contains("Profile: bot"));
+    assert!(human.contains("RPC #1"));
+    assert!(human.contains("Slot lag: baseline"));
+    assert!(human.contains("Failed checks: getRecentPerformanceSamples"));
+
+    let json = render_compare_json(&report).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["profile"], "bot");
+    assert_eq!(parsed["best_endpoint_index"], 1);
+    assert_eq!(parsed["worst_endpoint_index"], 2);
+    assert!(parsed["endpoints"].is_array());
+    assert_eq!(parsed["endpoints"][0]["index"], 1);
+
+    let markdown = render_markdown(&report);
+    assert!(markdown.contains("# Solana Infra Doctor RPC Compare Report"));
+    assert!(markdown.contains("Profile: `bot`"));
+    assert!(markdown.contains("| RPC | URL | Verdict | Score | Slot | Slot lag | Average latency | Failed checks | Blockhash valid |"));
+    assert!(markdown.contains("## Recommendation"));
+    assert!(markdown.contains("## Limitations"));
+    assert!(markdown.contains("## Disclaimer"));
+    assert!(markdown.contains("`https://***:***@provider.com/rpc`"));
+    assert!(!markdown.contains("api-key="));
+
+    let path = temp_report_path("sol-doctor-compare-report.md");
+    write_markdown_report(&report, &path).unwrap();
+    let written = fs::read_to_string(&path).unwrap();
+    let _ = fs::remove_file(&path);
+    assert!(written.contains("Solana Infra Doctor RPC Compare Report"));
+}
+
+#[test]
+fn compare_tie_breakers_and_format_variants_are_covered() {
+    assert_eq!(CompareProfile::General.label(), "general");
+    assert_eq!(CompareProfile::Wallet.label(), "wallet");
+    assert_eq!(CompareProfile::Bot.label(), "bot");
+    assert_eq!(CompareProfile::Indexer.label(), "indexer");
+    assert_eq!(CompareProfile::Ci.label(), "ci");
+    assert_eq!(CompareProfile::Wallet.to_string(), "wallet");
+    assert_eq!(CompareProfileSummary::General.label(), "general");
+    assert_eq!(CompareProfileSummary::Wallet.label(), "wallet");
+    assert_eq!(CompareProfileSummary::Indexer.label(), "indexer");
+    assert_eq!(CompareProfileSummary::Ci.label(), "ci");
+
+    let reports = vec![
+        compare_check_report(
+            "https://missing.example.com/",
+            Verdict::Unknown,
+            None,
+            None,
+            false,
+            &[],
+        ),
+        compare_check_report(
+            "https://warning-fast.example.com/",
+            Verdict::Warning,
+            Some(50),
+            Some(500),
+            true,
+            &["getHealth", "getVersion", "getGenesisHash", "getSlot"],
+        ),
+        compare_check_report(
+            "https://warning-slow.example.com/",
+            Verdict::Warning,
+            Some(49),
+            Some(900),
+            true,
+            &["getHealth", "getVersion", "getGenesisHash", "getSlot"],
+        ),
+    ];
+    let report = build_compare_report(CompareProfile::Wallet, &reports);
+
+    assert_eq!(report.best_endpoint_index, 2);
+    assert_eq!(report.worst_endpoint_index, 1);
+    assert!(report.endpoints[1]
+        .notes
+        .iter()
+        .any(|note| note.contains("core RPC methods")));
+
+    let human = render_compare_human(&report);
+    assert!(human.contains("Slot: n/a"));
+    assert!(human.contains("Slot lag: n/a"));
+    assert!(human.contains("Average latency: n/a"));
+
+    let markdown = render_markdown(&build_compare_report(
+        CompareProfile::General,
+        &[
+            compare_check_report(
+                "https://no-notes.example.com/",
+                Verdict::Good,
+                Some(10),
+                Some(100),
+                true,
+                &[],
+            ),
+            compare_check_report(
+                "https://invalid-blockhash.example.com/",
+                Verdict::Bad,
+                Some(9),
+                Some(2_000),
+                false,
+                &["getHealth"],
+            ),
+        ],
+    ));
+    assert!(markdown.contains("- Notes: none"));
+    assert!(markdown.contains("| RPC #2 | `https://invalid-blockhash.example.com/` | `BAD`"));
+    assert!(markdown.contains("| no |"));
+
+    let tie_reports = vec![
+        compare_check_report(
+            "https://tie-good.example.com/",
+            Verdict::Good,
+            Some(100),
+            Some(700),
+            false,
+            &["getHealth", "getVersion", "getGenesisHash"],
+        ),
+        compare_check_report(
+            "https://tie-warning.example.com/",
+            Verdict::Warning,
+            Some(100),
+            Some(700),
+            true,
+            &["getHealth", "getVersion", "getGenesisHash"],
+        ),
+    ];
+    let tie_report = build_compare_report(CompareProfile::General, &tie_reports);
+    assert_eq!(tie_report.best_endpoint_index, 1);
+
+    let latency_tie_reports = vec![
+        compare_check_report(
+            "https://latency-slower.example.com/",
+            Verdict::Good,
+            Some(100),
+            Some(700),
+            true,
+            &["getHealth", "getVersion", "getGenesisHash", "getSlot"],
+        ),
+        compare_check_report(
+            "https://latency-faster.example.com/",
+            Verdict::Good,
+            Some(100),
+            Some(300),
+            true,
+            &["getHealth", "getVersion", "getGenesisHash", "getSlot"],
+        ),
+    ];
+    let latency_tie_report = build_compare_report(CompareProfile::General, &latency_tie_reports);
+    assert_eq!(latency_tie_report.best_endpoint_index, 2);
+
+    let slot_tie_reports = vec![
+        compare_check_report(
+            "https://slot-behind.example.com/",
+            Verdict::Good,
+            Some(90),
+            Some(300),
+            true,
+            &["getHealth", "getVersion", "getGenesisHash", "getSlot"],
+        ),
+        compare_check_report(
+            "https://slot-baseline.example.com/",
+            Verdict::Good,
+            Some(100),
+            Some(300),
+            true,
+            &["getHealth", "getVersion", "getGenesisHash", "getSlot"],
+        ),
+    ];
+    let slot_tie_report = build_compare_report(CompareProfile::General, &slot_tie_reports);
+    assert_eq!(slot_tie_report.best_endpoint_index, 2);
+}
+
+fn temp_report_path(file_name: &str) -> PathBuf {
+    let mut path = std::env::temp_dir();
+    path.push(format!("{}-{file_name}", std::process::id()));
+    path
 }

@@ -447,9 +447,11 @@ fn classify_error(error: &AppError) -> ErrorKind {
         AppError::RpcRequest { source, .. } if source.is_status() => ErrorKind::HttpError,
         AppError::RpcRequest { source, .. } if source.is_decode() => ErrorKind::MalformedResponse,
         AppError::UnexpectedRpcResponse { .. } => ErrorKind::MalformedResponse,
-        AppError::RpcRequest { .. } | AppError::HttpClient(_) | AppError::SerializeReport(_) => {
-            ErrorKind::UnknownError
-        }
+        AppError::RpcRequest { .. }
+        | AppError::HttpClient(_)
+        | AppError::SerializeReport(_)
+        | AppError::CompareRequiresTwoRpcUrls
+        | AppError::WriteMarkdownReport { .. } => ErrorKind::UnknownError,
     }
 }
 
