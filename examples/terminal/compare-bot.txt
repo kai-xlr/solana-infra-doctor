@@ -1,32 +1,38 @@
-Solana Infra Doctor — RPC Compare
+Solana Infra Doctor · RPC Comparison
 
 Profile: bot
 
 RPC #1
-URL: https://api.mainnet-beta.solana.com/
-Verdict: WARNING
-Score: 20/100
-Slot: 312456740
-Slot lag: 65 slots behind
-Average latency: 820ms
-Failed checks: none
-Blockhash valid: yes
-Notes:
-- Average latency is high for latency-sensitive bot workloads.
-- Slot lag is high for slot-sensitive bot workloads.
+URL                   https://api.mainnet-beta.solana.com/
+Genesis               5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d
+Verdict               GOOD
+Score                 99/100
+Slot                  424282690
+Slot lag              32 slots behind
+Average latency       18 ms
+Block time lag        15s behind
+Median priority fee   0 micro-lamports/CU
+Token Program         ready
+Token-2022            ready
+Failed checks         none
+Blockhash valid       yes
 
 RPC #2
-URL: https://redacted-rpc.example.com/
-Verdict: GOOD
-Score: 90/100
-Slot: 312456805
-Slot lag: baseline
-Average latency: 90ms
-Failed checks: none
-Blockhash valid: yes
+URL                   https://solana-rpc.publicnode.com/
+Genesis               5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d
+Verdict               GOOD
+Score                 100/100
+Slot                  424282722
+Slot lag              baseline
+Average latency       95 ms
+Block time lag        2s behind
+Median priority fee   0 micro-lamports/CU
+Token Program         ready
+Token-2022            ready
+Failed checks         none
+Blockhash valid       yes
 
-Recommendation:
-Best RPC: RPC #2
-Worst RPC: RPC #1
+Recommendation
+Best RPC: #2 · solana-rpc.publicnode.com
 RPC #2 is recommended for bot workloads.
-Avoid RPC #1 for latency-sensitive or slot-sensitive workloads.
+RPC #1 has lower latency, but RPC #2 is fresher. For bot workloads, slot freshness may matter more than raw HTTP latency.

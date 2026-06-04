@@ -404,15 +404,19 @@ Target
 Endpoint   api.mainnet-beta.solana.com
 
 Result
-GOOD      All RPC readiness checks passed
-Latency   23 ms average
-Checks    7 passed · 0 failed
+GOOD         All RPC readiness checks passed
+Latency      10 ms average
+Checks       11 passed · 0 failed
+Block time   13s behind (finalized)
+Fee market   median 0 micro-lamports/CU
+Token        Token Program ready · Token-2022 ready
 
 Checks
 Category       Status    Summary
 Core           PASS      4 / 4
 Blockhash      PASS      2 / 2
-Performance    PASS      1 / 1
+Performance    PASS      3 / 3
+Token          PASS      2 / 2
 
 Tip: run with --verbose to see full details.
 ```
@@ -427,24 +431,33 @@ Target
 RPC URL   https://api.mainnet-beta.solana.com/
 
 Result
-GOOD      All RPC readiness checks passed
-Latency   22 ms average
-Checks    7 passed · 0 failed
+GOOD         All RPC readiness checks passed
+Latency      18 ms average
+Checks       11 passed · 0 failed
+Block time   16s behind (finalized)
+Fee market   median 0 micro-lamports/CU
+Token        Token Program ready · Token-2022 ready
 
 Checks
 
 Core
-- getHealth       PASS  86 ms  health is ok
-- getVersion      PASS  13 ms  solana-core 4.0.0
-- getGenesisHash  PASS  14 ms  5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d
-- getSlot         PASS  11 ms  slot 424147058
+- getHealth       PASS  35 ms  health is ok
+- getVersion      PASS  9 ms   solana-core 4.0.0
+- getGenesisHash  PASS  24 ms  5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d
+- getSlot         PASS  5 ms   slot 424282448
 
 Blockhash
-- getLatestBlockhash  PASS  11 ms  4fzZUYN9uQR6HLTj5faRtJjbiXaLxUfz9k1T2N5ATELG
-- isBlockhashValid    PASS  3 ms   latest blockhash is valid
+- getLatestBlockhash  PASS  2 ms  FzsSsc1FBjsERVk6ZqJpqtCKSBLG7GywRFFNb2yBmLAz
+- isBlockhashValid    PASS  5 ms  latest blockhash is valid
 
 Performance
-- getRecentPerformanceSamples  PASS  19 ms  234389 transactions across 154 slots in 60s
+- getRecentPerformanceSamples  PASS  67 ms  214347 transactions across 152 slots in 60s
+- getBlockTime                 PASS  21 ms  finalized block time 16s behind wall clock
+- getRecentPrioritizationFees  PASS  11 ms  median priority fee 0 micro-lamports/CU (max 0)
+
+Token
+- getAccountInfo  PASS  8 ms   Token Program ready: executable 36-byte program owned by BPFLoaderUpgradeab1e11111111111111111111111
+- getAccountInfo  PASS  19 ms  Token-2022 ready: executable 36-byte program owned by BPFLoaderUpgradeab1e11111111111111111111111
 ```
 
 ## Compare Output Example
@@ -459,9 +472,9 @@ Solana Infra Doctor · RPC Comparison
 
 Profile: bot
 
-RPC   Endpoint                      Verdict   Score    Latency   Slot lag
-#1    api.mainnet-beta.solana.com   GOOD      83/100   20 ms     32 behind
-#2    solana-rpc.publicnode.com     GOOD      90/100   98 ms     baseline
+RPC   Endpoint                      Verdict   Score     Latency   Slot lag
+#1    api.mainnet-beta.solana.com   GOOD      99/100    16 ms     32 behind
+#2    solana-rpc.publicnode.com     GOOD      100/100   105 ms    baseline
 
 Recommendation
 Best RPC: #2 · solana-rpc.publicnode.com
@@ -581,6 +594,8 @@ diagnostic runs, not provider benchmarks.
   — single-RPC `check` terminal output.
 - [`examples/terminal/compare-bot.txt`](examples/terminal/compare-bot.txt)
   — `compare` terminal output for the `bot` profile.
+- [`examples/terminal/ws-mainnet.txt`](examples/terminal/ws-mainnet.txt)
+  — `ws` WebSocket readiness terminal output.
 - [`examples/reports/compare-bot-report.md`](examples/reports/compare-bot-report.md)
   — Markdown comparison report for the `bot` profile.
 - [`examples/reports/compare-indexer-report.md`](examples/reports/compare-indexer-report.md)
