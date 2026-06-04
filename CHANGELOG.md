@@ -14,6 +14,12 @@
   (`block_time_lag_secs`, `prioritization_fee_median`), and the Markdown report.
   `getFeeForMessage` was intentionally not added (it requires constructing a
   signed message; low marginal value).
+- Make non-critical (informational) check failures cap the verdict at `WARNING`
+  rather than escalating to `BAD`. Previously two or more non-critical failures
+  forced `BAD`; with the new informational checks that was too harsh, so an
+  endpoint that serves core/blockhash but not, say, `getBlockTime` and
+  `getRecentPrioritizationFees` is now `WARNING`. Critical failures, repeated
+  timeouts, and excessive latency still yield `BAD`.
 - Make the `ws` diagnostic **reconnect with exponential backoff** when a
   connection fails to establish or drops before the first notification (up to 3
   reconnects). A connected-but-quiet endpoint is not retried. The number of

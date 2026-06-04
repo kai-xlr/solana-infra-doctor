@@ -1820,6 +1820,22 @@ fn verdict_summary_and_threshold_branches() {
         calculate_verdict(&one_non_critical, Some(50)),
         Verdict::Warning
     );
+    // Multiple *non-critical* (informational) failures degrade but do not make
+    // an endpoint unusable: WARNING, not BAD.
+    let two_non_critical = vec![
+        verdict_check(CheckStatus::Success, true, None),
+        verdict_check(CheckStatus::Failed, false, Some(ErrorKind::RpcError)),
+        verdict_check(
+            CheckStatus::Failed,
+            false,
+            Some(ErrorKind::MalformedResponse),
+        ),
+    ];
+    assert_eq!(
+        calculate_verdict(&two_non_critical, Some(50)),
+        Verdict::Warning
+    );
+    // But two repeated timeouts (connectivity) are still BAD.
     let timeouts = vec![
         verdict_check(CheckStatus::Failed, false, Some(ErrorKind::Timeout)),
         verdict_check(CheckStatus::Failed, false, Some(ErrorKind::Timeout)),

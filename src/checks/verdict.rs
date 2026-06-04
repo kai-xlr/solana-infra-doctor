@@ -29,14 +29,16 @@ pub fn calculate_verdict(checks: &[RpcCheck], average_latency_ms: Option<u128>) 
 
     if invalid_url
         || critical_failed
-        || failed_count >= 2
         || timeout_failures >= 2
         || average_latency_ms.is_some_and(|latency| latency > WARNING_AVERAGE_LATENCY_MS)
     {
         return Verdict::Bad;
     }
 
-    if failed_count == 1
+    // Non-critical (informational) failures — e.g. performance samples, block
+    // time, prioritization fees — degrade the endpoint but do not make it
+    // unusable, so any number of them caps the verdict at WARNING rather than BAD.
+    if failed_count >= 1
         || average_latency_ms.is_some_and(|latency| {
             latency > GOOD_AVERAGE_LATENCY_MS && latency <= WARNING_AVERAGE_LATENCY_MS
         })
