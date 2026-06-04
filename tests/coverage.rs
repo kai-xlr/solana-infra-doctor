@@ -2144,7 +2144,7 @@ async fn ws_reconnects_after_dropped_connection() {
     assert_eq!(report.first_slot, Some(424_000_000));
     // The reconnect is surfaced as a note in human output.
     let human = ws_render_human(&report, plain(), false);
-    assert!(human.to_lowercase().contains("reconnect"));
+    assert!(human.to_lowercase().contains("retried"));
 }
 
 #[test]

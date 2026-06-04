@@ -11,10 +11,12 @@ pub fn classify(report: &WsReport) -> (Verdict, String, Vec<String>) {
     // Surface reconnects regardless of the final verdict — a connection that
     // needed retries is worth noting even when it eventually succeeded.
     if report.reconnect_attempts > 0 {
+        // Neutral wording: accurate whether the retries eventually succeeded
+        // (GOOD/WARNING) or were exhausted (BAD).
         notes.insert(
             0,
             format!(
-                "Reconnected {} time(s) before the connection held.",
+                "Connection was retried {} time(s) during the check.",
                 report.reconnect_attempts
             ),
         );

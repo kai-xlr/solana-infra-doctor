@@ -15,7 +15,10 @@ use serde_json::Value;
 pub enum Subscription {
     /// `slotSubscribe` — notifies on each new slot (the default).
     Slot,
-    /// `logsSubscribe` (all) — notifies on each transaction's logs.
+    /// `logsSubscribe` with the broad `"all"` filter — notifies on every
+    /// transaction's logs. The diagnostic only waits for the *first*
+    /// notification and then unsubscribes, so exposure to the firehose is brief;
+    /// some providers may restrict the `"all"` filter.
     Logs,
 }
 
