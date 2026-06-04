@@ -1,0 +1,16 @@
+Solana Infra Doctor · WebSocket Readiness
+
+Target
+RPC         https://api.mainnet-beta.solana.com/
+WebSocket   wss://api.mainnet-beta.solana.com/
+
+Result
+GOOD   WebSocket readiness checks passed
+
+Checks
+Check                 Status    Detail
+Connect               PASS      106 ms
+Subscribe             PASS      slotSubscribe · id 1
+First notification    PASS      332 ms · slot 424282488
+Unsubscribe           PASS
+Close                 PASS

@@ -1,22 +1,33 @@
-Solana Infra Doctor
-===================
-RPC URL: https://api.mainnet-beta.solana.com/
-Verdict: GOOD
-Summary: all RPC readiness checks succeeded
-Average latency: 11ms
+Solana Infra Doctor · RPC Readiness
 
-Checks:
+Target
+RPC URL   https://api.mainnet-beta.solana.com/
 
-Core:
-- getHealth                    OK       30ms  health is ok
-- getVersion                   OK        9ms  solana-core 4.0.0
-- getGenesisHash               OK        6ms  5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d
-- getSlot                      OK        5ms  slot 424059251
+Result
+GOOD         All RPC readiness checks passed
+Latency      18 ms average
+Checks       11 passed · 0 failed
+Block time   16s behind (finalized)
+Fee market   median 0 micro-lamports/CU
+Token        Token Program ready · Token-2022 ready
 
-Blockhash:
-- getLatestBlockhash           OK        9ms  HtNwARuM6rwjZHD9stRQmjJ7P4QXFe234UrCfRPdf5Ac
-- isBlockhashValid             OK        5ms  latest blockhash is valid
+Checks
 
-Performance:
-- getRecentPerformanceSamples  OK       19ms  228252 transactions across 153 slots in 60s
+Core
+- getHealth       PASS  35 ms  health is ok
+- getVersion      PASS  9 ms   solana-core 4.0.0
+- getGenesisHash  PASS  24 ms  5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d
+- getSlot         PASS  5 ms   slot 424282448
 
+Blockhash
+- getLatestBlockhash  PASS  2 ms  FzsSsc1FBjsERVk6ZqJpqtCKSBLG7GywRFFNb2yBmLAz
+- isBlockhashValid    PASS  5 ms  latest blockhash is valid
+
+Performance
+- getRecentPerformanceSamples  PASS  67 ms  214347 transactions across 152 slots in 60s
+- getBlockTime                 PASS  21 ms  finalized block time 16s behind wall clock
+- getRecentPrioritizationFees  PASS  11 ms  median priority fee 0 micro-lamports/CU (max 0)
+
+Token
+- getAccountInfo  PASS  8 ms   Token Program ready: executable 36-byte program owned by BPFLoaderUpgradeab1e11111111111111111111111
+- getAccountInfo  PASS  19 ms  Token-2022 ready: executable 36-byte program owned by BPFLoaderUpgradeab1e11111111111111111111111
