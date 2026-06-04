@@ -36,3 +36,9 @@ This project is an independent developer tool. Do not add token, NFT, airdrop, g
 - Include tests for behavior changes.
 - Avoid logging sensitive RPC URLs, credentials, or query strings.
 - Keep user-facing error messages clear and concise.
+
+## Releasing
+
+Releases are published to crates.io via Trusted Publishing from a manually
+triggered GitHub Actions workflow (no permanent API token in GitHub Secrets).
+See [`docs/releasing.md`](docs/releasing.md) for the full maintainer process.
