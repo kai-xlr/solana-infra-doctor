@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.0 - Unreleased
+## 0.5.0 - 2026-06-04
 
 - Redesign human terminal output into a concise, scannable default: a per-category
   summary for `check`, a one-row-per-endpoint summary table for `compare`, and a
