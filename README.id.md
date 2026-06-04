@@ -16,6 +16,7 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#lisensi)
 [![Rust](https://img.shields.io/badge/rust-1.76%2B-orange.svg)](https://www.rust-lang.org/)
 [![Status](https://img.shields.io/badge/status-active-blue.svg)](#perintah)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/satyakwok/solana-infra-doctor)
 
 **CLI Rust yang local-first untuk diagnostik kesiapan produksi RPC Solana, perbandingan endpoint, pemeriksaan WebSocket, dan laporan yang aman-redaksi.**
 
