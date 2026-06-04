@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="edgeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="52%" stop-color="#22D3EE"/>
+      <stop offset="100%" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="55%" stop-color="#22D3EE"/>
+      <stop offset="100%" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="4.10" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="92.2" fill="#080B10"/>
+  <polygon points="256.0,97.3 393.5,176.6 393.5,335.4 256.0,414.7 118.5,335.4 118.5,176.6" fill="none" stroke="url(#edgeGrad)" stroke-width="9.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
+  <circle cx="256.0" cy="97.3" r="13.3" fill="url(#nodeGrad)" />
+<circle cx="393.5" cy="176.6" r="13.3" fill="url(#nodeGrad)" />
+<circle cx="393.5" cy="335.4" r="13.3" fill="url(#nodeGrad)" />
+<circle cx="256.0" cy="414.7" r="13.3" fill="url(#nodeGrad)" />
+<circle cx="118.5" cy="335.4" r="13.3" fill="url(#nodeGrad)" />
+<circle cx="118.5" cy="176.6" r="13.3" fill="url(#nodeGrad)" />
+  
+    <circle cx="256.0" cy="170.3" r="3.6" fill="#22D3EE" opacity="0.95"/>
+    <circle cx="256.0" cy="341.7" r="3.6" fill="#8B5CF6" opacity="0.95"/>
+    
+  <polyline points="168.7,256.0 211.6,256.0 237.0,237.0 256.0,308.4 275.0,208.4 298.9,275.0 343.3,275.0" fill="none" stroke="url(#edgeGrad)" stroke-width="10.8" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+</svg>

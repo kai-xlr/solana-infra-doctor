@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="420" viewBox="0 0 1500 420">
+  <rect width="1500" height="420" rx="44" fill="#080B10"/>
+  <g transform="translate(70,75.0)">
+  <defs>
+    <linearGradient id="edgeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="52%" stop-color="#22D3EE"/>
+      <stop offset="100%" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="55%" stop-color="#22D3EE"/>
+      <stop offset="100%" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="2.16" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  
+  <polygon points="135.0,51.3 207.5,93.2 207.5,176.8 135.0,218.7 62.5,176.8 62.5,93.1" fill="none" stroke="url(#edgeGrad)" stroke-width="4.9" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
+  <circle cx="135.0" cy="51.3" r="7.0" fill="url(#nodeGrad)" />
+<circle cx="207.5" cy="93.2" r="7.0" fill="url(#nodeGrad)" />
+<circle cx="207.5" cy="176.8" r="7.0" fill="url(#nodeGrad)" />
+<circle cx="135.0" cy="218.7" r="7.0" fill="url(#nodeGrad)" />
+<circle cx="62.5" cy="176.8" r="7.0" fill="url(#nodeGrad)" />
+<circle cx="62.5" cy="93.1" r="7.0" fill="url(#nodeGrad)" />
+  
+    <circle cx="135.0" cy="89.8" r="1.9" fill="#22D3EE" opacity="0.95"/>
+    <circle cx="135.0" cy="180.2" r="1.9" fill="#8B5CF6" opacity="0.95"/>
+    
+  <polyline points="89.0,135.0 111.6,135.0 125.0,125.0 135.0,162.6 145.0,109.9 157.6,145.0 181.0,145.0" fill="none" stroke="url(#edgeGrad)" stroke-width="5.7" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+</g>
+  <text x="390" y="205" fill="#F3F4F6" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="92" font-weight="700" letter-spacing="-2">sol-doctor</text>
+  <text x="394" y="279" fill="#94A3B8" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="27" font-weight="600" letter-spacing="7">DIAGNOSE. MONITOR. OPTIMIZE.</text>
+</svg>
