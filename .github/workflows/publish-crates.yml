@@ -1,0 +1,181 @@
+# Manual, gated publish to crates.io via Trusted Publishing.
+#
+# Authentication uses a short-lived OIDC token requested at run time through the
+# official rust-lang/crates-io-auth-action; no permanent crates.io API token is
+# stored in GitHub Secrets. This workflow deliberately does NOT create git tags
+# or GitHub releases (it has only `contents: read`) — see docs/releasing.md for
+# the post-publish steps.
+name: Publish to crates.io
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, WITHOUT the leading v (e.g. 0.6.0). Must equal Cargo.toml and the dated CHANGELOG.md entry."
+        required: true
+        type: string
+
+# Least privilege: read the source and mint an OIDC token. No `contents: write`,
+# so this workflow cannot push, tag, or create releases.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    # Gate the publish behind the protected `release` environment (manual
+    # approval / branch restrictions are configured on the environment).
+    environment: release
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          # Always publish the exact main branch state, never an arbitrary ref.
+          ref: main
+          fetch-depth: 0
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy, llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Validate release inputs and repository state
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="$INPUT_VERSION"
+
+          # Strict SemVer guards against typos and shell-injection via the input.
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+            echo "::error::Invalid version '$version' (expected SemVer like 0.6.0, no leading 'v')."
+            exit 1
+          fi
+
+          # Must be dispatched from the default branch.
+          if [ "${GITHUB_REF:-}" != "refs/heads/main" ]; then
+            echo "::error::This workflow must be run from main (got '${GITHUB_REF:-unknown}')."
+            exit 1
+          fi
+
+          # Cargo.toml version must match the input exactly.
+          cargo_version="$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "solana-infra-doctor") | .version')"
+          if [ "$cargo_version" != "$version" ]; then
+            echo "::error::Cargo.toml version '$cargo_version' does not match input '$version'."
+            exit 1
+          fi
+
+          # CHANGELOG must have a DATED entry for this version (not 'Unreleased').
+          if ! grep -Eq "^## ${version} - [0-9]{4}-[0-9]{2}-[0-9]{2}" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no dated '## ${version} - YYYY-MM-DD' entry."
+            exit 1
+          fi
+          if grep -Eq "^## ${version} - Unreleased" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md still marks ${version} as Unreleased."
+            exit 1
+          fi
+
+          # Working tree must be clean.
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Working tree is not clean."
+            git status --short
+            exit 1
+          fi
+
+          # The checked-out commit must be reachable from origin/main.
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::HEAD is not reachable from origin/main."
+            exit 1
+          fi
+
+          # The tag v<version> must not already exist on the remote.
+          if git ls-remote --exit-code --tags origin "refs/tags/v${version}" >/dev/null 2>&1; then
+            echo "::error::Tag v${version} already exists."
+            exit 1
+          fi
+
+          # The version must not already be published on crates.io.
+          http="$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H 'User-Agent: solana-infra-doctor release workflow' \
+            "https://crates.io/api/v1/crates/solana-infra-doctor/${version}" || echo 000)"
+          if [ "$http" = "200" ]; then
+            echo "::error::Version ${version} is already published on crates.io."
+            exit 1
+          fi
+
+          echo "Validated ${version}: matches Cargo.toml and a dated CHANGELOG entry; clean tree; no existing tag or published version."
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test
+
+      - name: Coverage gate
+        run: >
+          cargo llvm-cov --all-targets
+          --ignore-filename-regex 'main.rs'
+          --fail-under-lines 95
+          --lcov
+          --output-path lcov.info
+
+      - name: Whitespace check
+        run: git diff --check
+
+      - name: Inspect package contents
+        run: |
+          set -euo pipefail
+          cargo package --list > package-files.txt
+          echo "Packaged files:"
+          cat package-files.txt
+          if grep -Eq '(^|/)(lcov\.info|AGENTS\.md|CLAUDE\.md|PROJECT_CONTEXT\.local\.md)$|(^|/)\.claude/|(^|/)target/|\.png$' package-files.txt; then
+            echo "::error::Forbidden file found in package contents."
+            exit 1
+          fi
+
+      - name: Package dry-run (verify build)
+        run: cargo publish --dry-run
+
+      # Mint a short-lived crates.io token via OIDC (Trusted Publishing). The
+      # token is automatically revoked by the action when the job finishes.
+      - name: Authenticate with crates.io
+        id: crates_io_auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      - name: Publish crate
+        env:
+          # The temporary token is consumed only here, never printed or passed
+          # on the command line.
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates_io_auth.outputs.token }}
+        run: cargo publish
+
+      - name: Verify publication
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="$INPUT_VERSION"
+          for attempt in 1 2 3 4 5 6; do
+            http="$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H 'User-Agent: solana-infra-doctor release workflow' \
+              "https://crates.io/api/v1/crates/solana-infra-doctor/${version}" || echo 000)"
+            if [ "$http" = "200" ]; then
+              echo "Verified ${version} is live on crates.io."
+              exit 0
+            fi
+            echo "Not indexed yet (HTTP ${http}); retry ${attempt}/6..."
+            sleep 15
+          done
+          echo "::error::Could not verify ${version} on crates.io after publishing. Check crates.io before re-running (do not reuse a version)."
+          exit 1
