@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/satyakwok/solana-infra-doctor/main/assets/logo-wordmark-dark.svg" />
+    <img alt="Solana Infra Doctor" src="https://raw.githubusercontent.com/satyakwok/solana-infra-doctor/main/assets/logo-wordmark-light.svg" width="640" />
+  </picture>
+</p>
+
 # Solana Infra Doctor
 
 [![CI](https://github.com/satyakwok/solana-infra-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/satyakwok/solana-infra-doctor/actions/workflows/ci.yml)
