@@ -1,11 +1,14 @@
 use solana_infra_doctor::{
-    checks::{calculate_verdict, run_check, CheckCategory, CheckStatus, ErrorKind, RpcCheck},
+    checks::{
+        calculate_verdict, run_check, verdict::summarize, CheckCategory, CheckStatus, ErrorKind,
+        RpcCheck,
+    },
     cli::{CheckArgs, CompareArgs, CompareProfile, WsArgs},
     color::{ColorChoice, Palette},
     compare::{
         build_compare_report, render_human as render_compare_human,
         render_json as render_compare_json, render_markdown, run_compare, score_endpoint, slot_lag,
-        write_markdown_report, CompareEndpoint, CompareProfileSummary,
+        write_markdown_report, CompareEndpoint, CompareProfileSummary, CompareReport,
     },
     latency::{average_latency_ms, Latency},
     redact::{redact_text, redact_url},
@@ -1713,4 +1716,137 @@ fn output_style_helpers() {
         "api.mainnet-beta.solana.com"
     );
     assert_eq!(endpoint_label("not a url"), "not a url");
+}
+
+fn verdict_check(status: CheckStatus, critical: bool, kind: Option<ErrorKind>) -> RpcCheck {
+    RpcCheck {
+        category: CheckCategory::Core,
+        method: "m",
+        status,
+        latency_ms: Some(10),
+        detail: String::new(),
+        error_kind: kind,
+        critical,
+    }
+}
+
+#[test]
+fn verdict_summary_and_threshold_branches() {
+    let pass = vec![verdict_check(CheckStatus::Success, true, None)];
+
+    // summarize: every verdict / sub-branch, including the latency-driven and
+    // Unknown cases that run_check cannot produce on its own.
+    assert_eq!(
+        summarize(Verdict::Good, &pass, Some(50), false),
+        "All RPC readiness checks passed"
+    );
+    assert_eq!(
+        summarize(Verdict::Unknown, &[], None, false),
+        "Not enough data to produce a reliable verdict"
+    );
+    let one_fail = vec![verdict_check(
+        CheckStatus::Failed,
+        false,
+        Some(ErrorKind::RpcError),
+    )];
+    assert!(summarize(Verdict::Warning, &one_fail, Some(50), false)
+        .contains("non-critical check failed"));
+    let elevated = summarize(Verdict::Warning, &pass, Some(800), true);
+    assert!(elevated.contains("elevated at 800 ms"));
+    assert!(elevated.contains("--fail-on-warning is enabled"));
+    let two_fail = vec![
+        verdict_check(CheckStatus::Failed, true, None),
+        verdict_check(CheckStatus::Failed, false, None),
+    ];
+    assert_eq!(
+        summarize(Verdict::Bad, &two_fail, Some(50), false),
+        "2 RPC readiness checks failed"
+    );
+    assert_eq!(
+        summarize(Verdict::Bad, &pass, Some(2_000), false),
+        "Average latency is too high at 2000 ms"
+    );
+
+    // calculate_verdict: thresholds and failure-driven branches.
+    assert_eq!(calculate_verdict(&[], None), Verdict::Unknown);
+    assert_eq!(calculate_verdict(&pass, Some(50)), Verdict::Good);
+    assert_eq!(calculate_verdict(&pass, None), Verdict::Unknown);
+    assert_eq!(calculate_verdict(&pass, Some(800)), Verdict::Warning);
+    assert_eq!(calculate_verdict(&pass, Some(2_000)), Verdict::Bad);
+    let critical = vec![verdict_check(CheckStatus::Failed, true, None)];
+    assert_eq!(calculate_verdict(&critical, Some(50)), Verdict::Bad);
+    let invalid = vec![verdict_check(
+        CheckStatus::Failed,
+        false,
+        Some(ErrorKind::InvalidUrl),
+    )];
+    assert_eq!(calculate_verdict(&invalid, Some(50)), Verdict::Bad);
+    let one_non_critical = vec![
+        verdict_check(CheckStatus::Success, true, None),
+        verdict_check(CheckStatus::Failed, false, Some(ErrorKind::RpcError)),
+    ];
+    assert_eq!(
+        calculate_verdict(&one_non_critical, Some(50)),
+        Verdict::Warning
+    );
+    let timeouts = vec![
+        verdict_check(CheckStatus::Failed, false, Some(ErrorKind::Timeout)),
+        verdict_check(CheckStatus::Failed, false, Some(ErrorKind::Timeout)),
+    ];
+    assert_eq!(calculate_verdict(&timeouts, Some(50)), Verdict::Bad);
+}
+
+#[test]
+fn ws_verbose_shows_full_rpc_url() {
+    let report = WsReport {
+        verdict: Verdict::Good,
+        rpc_url: "https://api.mainnet-beta.solana.com/".to_string(),
+        ws_url: "wss://api.mainnet-beta.solana.com/".to_string(),
+        connected: true,
+        connect_latency_ms: Some(40),
+        subscription_method: "slotSubscribe",
+        subscribed: true,
+        time_to_first_notification_ms: Some(120),
+        first_slot: Some(100),
+        unsubscribed: true,
+        closed_cleanly: true,
+        summary: "WebSocket readiness checks passed".to_string(),
+        notes: Vec::new(),
+    };
+    // Default hides the full URL behind a hostname label; verbose shows it.
+    let concise = ws_render_human(&report, plain(), false);
+    assert!(concise.contains("api.mainnet-beta.solana.com"));
+    assert!(!concise.contains("https://api.mainnet-beta.solana.com/"));
+    let verbose = ws_render_human(&report, plain(), true);
+    assert!(verbose.contains("https://api.mainnet-beta.solana.com/"));
+}
+
+#[test]
+fn compare_recommendation_falls_back_when_best_index_has_no_endpoint() {
+    // A defensive path: a best index that does not match any endpoint falls back
+    // to printing the bare index.
+    let report = CompareReport {
+        profile: CompareProfileSummary::Bot,
+        endpoints: vec![CompareEndpoint {
+            index: 1,
+            url: "https://api.mainnet-beta.solana.com/".to_string(),
+            genesis_hash: None,
+            verdict: Verdict::Good,
+            score: 90,
+            slot: Some(100),
+            slot_lag: Some(0),
+            average_latency_ms: Some(20),
+            failed_checks: Vec::new(),
+            blockhash_valid: true,
+            notes: Vec::new(),
+        }],
+        best_endpoint_index: Some(99),
+        worst_endpoint_index: Some(1),
+        network_mismatch: false,
+        mismatch_reason: None,
+        recommendation: "Best RPC: RPC #99\nWorst RPC: RPC #1\nUse RPC #99.".to_string(),
+    };
+    let human = render_compare_human(&report, plain(), false);
+    assert!(human.contains("Best RPC: #99 · 99"));
+    assert!(human.contains("Use RPC #99."));
 }
