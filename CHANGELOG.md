@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.14.0 - Unreleased
+## 0.14.0 - 2026-06-06
 
 ### Added
 - A top-level **`schema_version`** field on `check`, `compare`, and `ws` JSON
