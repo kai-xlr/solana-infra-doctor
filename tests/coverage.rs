@@ -467,8 +467,32 @@ async fn http_403_is_classified_as_gated() {
         report
             .checks
             .iter()
+            .any(|check| check.method == "getHealth" && check.error_kind == Some(ErrorKind::Gated))
+    );
+}
+
+#[tokio::test]
+async fn http_404_falls_back_to_http_error() {
+    let server = MockRpcServer::start(vec![
+        MockResponse::status("404 Not Found", r#"{"error":"not found"}"#),
+        MockResponse::ok(version_ok()),
+        MockResponse::ok(genesis_ok()),
+        MockResponse::ok(slot_ok()),
+        MockResponse::ok(latest_blockhash_ok()),
+        MockResponse::ok(blockhash_valid_ok()),
+        MockResponse::ok(performance_ok()),
+    ]);
+
+    let report = run_check(args_for(server.url.clone())).await.unwrap();
+    server.join();
+
+    assert_eq!(report.verdict, Verdict::Bad);
+    assert!(
+        report
+            .checks
+            .iter()
             .any(|check| check.method == "getHealth"
-                && check.error_kind == Some(ErrorKind::Gated))
+                && check.error_kind == Some(ErrorKind::HttpError))
     );
 }
 
