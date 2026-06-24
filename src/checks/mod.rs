@@ -189,6 +189,7 @@ pub enum ErrorKind {
     HttpError,
     RpcError,
     MalformedResponse,
+    Gated,
     UnknownError,
 }
 
@@ -201,6 +202,7 @@ impl ErrorKind {
             Self::HttpError => "http_error",
             Self::RpcError => "rpc_error",
             Self::MalformedResponse => "malformed_response",
+            Self::Gated => "gated",
             Self::UnknownError => "unknown_error",
         }
     }
@@ -938,7 +940,12 @@ fn classify_error(error: &AppError) -> ErrorKind {
     match error {
         AppError::InvalidRpcUrl { .. } => ErrorKind::InvalidUrl,
         AppError::RpcRequest { source, .. } if source.is_timeout() => ErrorKind::Timeout,
-        AppError::RpcRequest { source, .. } if source.is_status() => ErrorKind::HttpError,
+        AppError::RpcRequest { source, .. } if source.is_status() => {
+            match source.status().map(|s| s.as_u16()) {
+                Some(403 | 401) => ErrorKind::Gated,
+                _ => ErrorKind::HttpError,
+            }
+        }
         AppError::RpcRequest { source, .. } if source.is_decode() => ErrorKind::MalformedResponse,
         AppError::UnexpectedRpcResponse { .. } => ErrorKind::MalformedResponse,
         AppError::RpcRequest { .. }
@@ -1267,6 +1274,7 @@ mod tests {
         assert_eq!(ErrorKind::HttpError.label(), "http_error");
         assert_eq!(ErrorKind::RpcError.label(), "rpc_error");
         assert_eq!(ErrorKind::MalformedResponse.label(), "malformed_response");
+        assert_eq!(ErrorKind::Gated.label(), "gated");
         assert_eq!(ErrorKind::UnknownError.label(), "unknown_error");
     }
 
@@ -1387,5 +1395,18 @@ mod tests {
     #[test]
     fn verdict_unknown_without_checks() {
         assert_eq!(calculate_verdict(&[], None), Verdict::Unknown);
+    }
+
+    #[test]
+    fn gated_serializes_to_gated_in_json() {
+        let check = RpcCheck::failed(
+            CheckCategory::Core,
+            "getHealth",
+            None,
+            "forbidden".to_string(),
+            ErrorKind::Gated,
+        );
+        let json = serde_json::to_value(&check).unwrap();
+        assert_eq!(json["error_kind"], "gated");
     }
 }

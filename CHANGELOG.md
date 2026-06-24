@@ -2,6 +2,10 @@
 
 ## 0.14.1 - Unreleased
 
+### Fixed
+- Classify HTTP 403/401 responses as `Gated` instead of generic `HttpError` so
+  provider-gated methods are surfaced distinctly in output and JSON.
+
 ### Documentation / metadata
 - List exit codes in `sol-doctor --help` so CI users see them without leaving the
   terminal (`0` GOOD | `1` WARNING | `2` BAD | `3` UNKNOWN).
