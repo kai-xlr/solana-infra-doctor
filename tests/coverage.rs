@@ -448,6 +448,31 @@ async fn full_check_classifies_http_and_decode_errors() {
 }
 
 #[tokio::test]
+async fn http_403_is_classified_as_gated() {
+    let server = MockRpcServer::start(vec![
+        MockResponse::status("403 Forbidden", r#"{"error":"forbidden"}"#),
+        MockResponse::ok(version_ok()),
+        MockResponse::ok(genesis_ok()),
+        MockResponse::ok(slot_ok()),
+        MockResponse::ok(latest_blockhash_ok()),
+        MockResponse::ok(blockhash_valid_ok()),
+        MockResponse::ok(performance_ok()),
+    ]);
+
+    let report = run_check(args_for(server.url.clone())).await.unwrap();
+    server.join();
+
+    assert_eq!(report.verdict, Verdict::Bad);
+    assert!(
+        report
+            .checks
+            .iter()
+            .any(|check| check.method == "getHealth"
+                && check.error_kind == Some(ErrorKind::Gated))
+    );
+}
+
+#[tokio::test]
 async fn invalid_rpc_url_returns_bad_report() {
     let report = run_check(args_for("not a url".to_string())).await.unwrap();
 
